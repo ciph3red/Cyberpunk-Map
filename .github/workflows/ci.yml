@@ -10,9 +10,6 @@ jobs:
   build_frontend:
     name: Build Frontend
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: ./wigle-map
     steps:
       - name: Checkout
         uses: actions/checkout@v3
@@ -29,9 +26,11 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install
+        working-directory: ./wigle-map
 
       - name: Build
         run: pnpm build
+        working-directory: ./wigle-map
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -63,9 +62,6 @@ jobs:
   build_backend:
     name: Build Backend
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: ./artifacts/api-server
     steps:
       - name: Checkout
         uses: actions/checkout@v3
@@ -84,14 +80,14 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Build
-        run: pnpm build
+        run: pnpm run build --filter=api-server...
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: backend-build
           path: |
-            ./artifacts/api-server/dist
+            ./artifacts/api-server/build
             ./artifacts/api-server/package.json
             ./pnpm-lock.yaml
 
