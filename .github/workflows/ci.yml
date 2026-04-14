@@ -14,9 +14,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v3
 
-      - name: List files
-        run: ls -R
-
       - name: Setup Node.js
         uses: actions/setup-node@v3
         with:
@@ -29,11 +26,9 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install
-        working-directory: ./wigle-map
 
       - name: Build
-        run: pnpm build
-        working-directory: ./wigle-map
+        run: pnpm --filter wigle-map... build
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -79,14 +74,11 @@ jobs:
         with:
           version: 8
 
-      - name: Remove lock file
-        run: rm pnpm-lock.yaml
-
       - name: Install dependencies
         run: pnpm install
 
       - name: Build
-        run: pnpm run build --filter=api-server...
+        run: pnpm --filter api-server... build
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
