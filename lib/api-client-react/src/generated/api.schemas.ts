@@ -80,6 +80,14 @@ export type SearchNetworksParams = {
    */
   ssid?: string;
   /**
+   * SSID wildcard pattern (use % as wildcard)
+   */
+  ssidlike?: string;
+  /**
+   * BSSID/MAC address
+   */
+  netid?: string;
+  /**
    * Latitude range start
    */
   latrange1?: number;
@@ -111,6 +119,22 @@ export type SearchNetworksParams = {
    * Encryption type filter
    */
   encryption?: SearchNetworksEncryption;
+  /**
+   * Network type filter
+   */
+  type?: SearchNetworksType;
+  /**
+   * Filter for free/open networks only
+   */
+  freenet?: boolean;
+  /**
+   * Filter for pay networks only
+   */
+  paynet?: boolean;
+  /**
+   * Radius variance from center point
+   */
+  variance?: number;
 };
 
 export type SearchNetworksEncryption =
@@ -120,4 +144,19 @@ export const SearchNetworksEncryption = {
   on: "on",
   off: "off",
   Unknown: "Unknown",
+} as const;
+
+export type SearchNetworksType =
+  (typeof SearchNetworksType)[keyof typeof SearchNetworksType];
+
+export const SearchNetworksType = {
+  WiFi: "WiFi",
+  BT: "BT",
+  BLE: "BLE",
+  GSM: "GSM",
+  UMTS: "UMTS",
+  LTE: "LTE",
+  CDMA: "CDMA",
+  WCDMA: "WCDMA",
+  NR: "NR",
 } as const;

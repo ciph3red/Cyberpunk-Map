@@ -48,6 +48,8 @@ router.get("/wigle/search", async (req, res) => {
   try {
     const {
       ssid,
+      ssidlike,
+      netid,
       latrange1,
       latrange2,
       longrange1,
@@ -56,10 +58,16 @@ router.get("/wigle/search", async (req, res) => {
       resultsPerPage,
       searchAfter,
       encryption,
+      type,
+      freenet,
+      paynet,
+      variance,
     } = req.query as Record<string, string>;
 
     const params: Record<string, string> = {};
     if (ssid) params.ssid = ssid;
+    if (ssidlike) params.ssidlike = ssidlike;
+    if (netid) params.netid = netid;
     if (latrange1) params.latrange1 = latrange1;
     if (latrange2) params.latrange2 = latrange2;
     if (longrange1) params.longrange1 = longrange1;
@@ -68,6 +76,10 @@ router.get("/wigle/search", async (req, res) => {
     if (resultsPerPage) params.resultsPerPage = resultsPerPage;
     if (searchAfter) params.searchAfter = searchAfter;
     if (encryption && encryption !== "any") params.encryption = encryption;
+    if (type && type !== "any") params.type = type;
+    if (freenet === "true") params.freenet = "true";
+    if (paynet === "true") params.paynet = "true";
+    if (variance) params.variance = variance;
 
     const { status, ok, text } = await wigleFetch("/network/search", params);
     const data = parseOrError(text);

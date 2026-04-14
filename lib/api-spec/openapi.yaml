@@ -81,6 +81,37 @@ paths:
             type: string
             enum: [on, off, Unknown]
           description: Encryption type filter
+        - name: type
+          in: query
+          schema:
+            type: string
+            enum: [WiFi, BT, BLE, GSM, UMTS, LTE, CDMA, WCDMA, NR]
+          description: Network type filter (WiFi, Bluetooth, BLE, or cell tower types)
+        - name: freenet
+          in: query
+          schema:
+            type: boolean
+          description: Filter for free/open networks only
+        - name: paynet
+          in: query
+          schema:
+            type: boolean
+          description: Filter for pay networks only
+        - name: ssidlike
+          in: query
+          schema:
+            type: string
+          description: SSID wildcard pattern (use % as wildcard)
+        - name: netid
+          in: query
+          schema:
+            type: string
+          description: BSSID/MAC address to search for
+        - name: variance
+          in: query
+          schema:
+            type: number
+          description: Radius variance from center point
       responses:
         "200":
           description: Search results
