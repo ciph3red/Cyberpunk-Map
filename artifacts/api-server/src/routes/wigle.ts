@@ -6,13 +6,14 @@ const router = Router();
 const WIGLE_BASE = "https://api.wigle.net/api/v2";
 
 function getWigleAuthHeader(): string {
+  const name = process.env.WIGLE_API_NAME;
   const token = process.env.WIGLE_API_TOKEN;
-  if (!token) {
-    throw new Error("WIGLE_API_TOKEN must be set");
+  if (!name || !token) {
+    throw new Error("WIGLE_API_NAME and WIGLE_API_TOKEN must be set");
   }
-  // WiGLE provides an "Encoded for use" token on the API page — a pre-encoded
-  // base64 credential. Use it directly as the Basic auth value.
-  return `Basic ${token}`;
+  // Build Basic auth from the raw API name + raw API token
+  const encoded = Buffer.from(`${name}:${token}`).toString("base64");
+  return `Basic ${encoded}`;
 }
 
 async function wigleFetch(path: string, params?: Record<string, string>): Promise<{ status: number; ok: boolean; text: string }> {
