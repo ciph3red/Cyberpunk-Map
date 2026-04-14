@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { logger } from "../lib/logger";
 
 const router = Router();
 
@@ -9,12 +10,12 @@ function getWigleAuthHeader(): string {
   if (!token) {
     throw new Error("WIGLE_API_TOKEN must be set");
   }
-  // WiGLE provides an "Encoded for use" token on the API page that is already
-  // a base64-encoded name:token pair — use it directly as the Basic auth value.
+  // WiGLE provides an "Encoded for use" token on the API page — a pre-encoded
+  // base64 credential. Use it directly as the Basic auth value.
   return `Basic ${token}`;
 }
 
-async function wigleFetch(path: string, params?: Record<string, string>): Promise<Response> {
+async function wigleFetch(path: string, params?: Record<string, string>): Promise<{ status: number; ok: boolean; text: string }> {
   const url = new URL(`${WIGLE_BASE}${path}`);
   if (params) {
     for (const [k, v] of Object.entries(params)) {
@@ -23,12 +24,23 @@ async function wigleFetch(path: string, params?: Record<string, string>): Promis
       }
     }
   }
-  return fetch(url.toString(), {
+  const response = await fetch(url.toString(), {
     headers: {
       Authorization: getWigleAuthHeader(),
       Accept: "application/json",
     },
   });
+  const text = await response.text();
+  logger.info({ status: response.status, path, snippet: text.slice(0, 120) }, "WiGLE raw response");
+  return { status: response.status, ok: response.ok, text };
+}
+
+function parseOrError(text: string): unknown {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return { success: false, message: text.slice(0, 200) };
+  }
 }
 
 router.get("/wigle/search", async (req, res) => {
@@ -56,11 +68,11 @@ router.get("/wigle/search", async (req, res) => {
     if (searchAfter) params.searchAfter = searchAfter;
     if (encryption && encryption !== "any") params.encryption = encryption;
 
-    const response = await wigleFetch("/network/search", params);
-    const data = await response.json();
+    const { status, ok, text } = await wigleFetch("/network/search", params);
+    const data = parseOrError(text);
 
-    if (!response.ok) {
-      res.status(response.status).json(data);
+    if (!ok) {
+      res.status(status).json(data);
       return;
     }
 
@@ -73,14 +85,12 @@ router.get("/wigle/search", async (req, res) => {
 
 router.get("/wigle/stats", async (req, res) => {
   try {
-    // Try the main stats endpoint; fall back gracefully if unavailable
-    const response = await wigleFetch("/stats/site");
-    if (response.ok) {
-      const data = await response.json();
-      res.json({ success: true, ...data });
+    const { ok, text } = await wigleFetch("/stats/site");
+    if (ok) {
+      const data = parseOrError(text);
+      res.json({ success: true, ...(data as object) });
       return;
     }
-    // If not available, return partial success so the UI doesn't break
     res.json({ success: true, nettotal: null });
   } catch (err) {
     req.log.error({ err }, "WiGLE stats error");
@@ -90,11 +100,11 @@ router.get("/wigle/stats", async (req, res) => {
 
 router.get("/wigle/user/stats", async (req, res) => {
   try {
-    const response = await wigleFetch("/profile/user");
-    const data = await response.json();
+    const { status, ok, text } = await wigleFetch("/profile/user");
+    const data = parseOrError(text);
 
-    if (!response.ok) {
-      res.status(response.status).json(data);
+    if (!ok) {
+      res.status(status).json(data);
       return;
     }
 
