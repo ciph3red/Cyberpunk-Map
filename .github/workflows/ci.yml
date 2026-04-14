@@ -75,7 +75,44 @@ jobs:
 
           scp -P 8123 -i "$KEY_FILE" -o StrictHostKeyChecking=accept-new -r \
             artifacts/wigle-map/dist/public/* \
-            "$FRONTEND_USER@$FRONTEND_HOST:/var/www/frontend/"
+            "$FRONTEND_USER@$FRONTEND_HOST:~/frontend-stage/"
+
+      - name: Promote frontend files
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.FRONTEND_HOST }}
+          port: 8123
+          username: ${{ secrets.FRONTEND_USER }}
+          key: ${{ secrets.FRONTEND_KEY }}
+          script: |
+            set -e
+            DEPLOY_DIR="${{ secrets.FRONTEND_DEPLOY_DIR }}"
+            if [ -z "$DEPLOY_DIR" ]; then DEPLOY_DIR="/var/www/frontend"; fi
+
+            SUDO=""
+            if [ ! -w "$DEPLOY_DIR" ] && [ ! -w "$(dirname "$DEPLOY_DIR")" ]; then
+              if command -v sudo >/dev/null 2>&1; then
+                SUDO="sudo"
+              else
+                echo "No write access to $DEPLOY_DIR and sudo is unavailable"
+                exit 1
+              fi
+            fi
+
+            SRC_DIR="$HOME/frontend-stage"
+            if [ ! -d "$SRC_DIR" ]; then
+              echo "Uploaded frontend files not found at $SRC_DIR"
+              exit 1
+            fi
+
+            $SUDO mkdir -p "$DEPLOY_DIR"
+            if command -v rsync >/dev/null 2>&1; then
+              $SUDO rsync -av --delete "$SRC_DIR/" "$DEPLOY_DIR/"
+            else
+              $SUDO find "$DEPLOY_DIR" -mindepth 1 -delete
+              $SUDO cp -a "$SRC_DIR/." "$DEPLOY_DIR/"
+            fi
 
   backend:
     name: Backend Build and Deploy
