@@ -2,121 +2,110 @@ name: CI/CD
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
   pull_request:
-    branches: [ main ]
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
 
 jobs:
-  build_frontend:
-    name: Build Frontend
+  frontend:
+    name: Frontend Build and Deploy
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Setup Node.js
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
-          node-version: '20.x'
+          node-version: 20
+          cache: pnpm
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v2
+        uses: pnpm/action-setup@v4
         with:
-          version: 8
+          version: 10
 
       - name: Install dependencies
-        run: pnpm install
+        run: pnpm install --frozen-lockfile
 
-      - name: Build
-        run: pnpm --filter wigle-map... build
+      - name: Build frontend
+        run: pnpm --filter @workspace/wigle-map run build
+        env:
+          NODE_ENV: production
+          PORT: "4173"
+          BASE_PATH: "/"
 
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: frontend-build
-          path: ./wigle-map/dist
-
-  deploy_frontend:
-    name: Deploy Frontend
-    needs: build_frontend
-    runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
-    steps:
-      - name: Download artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: frontend-build
-          path: ./dist
-
-      - name: Deploy to server
-        uses: appleboy/scp-action@master
+      - name: Deploy frontend
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: appleboy/scp-action@v1
         with:
           host: ${{ secrets.FRONTEND_HOST }}
           username: ${{ secrets.FRONTEND_USER }}
           key: ${{ secrets.FRONTEND_KEY }}
-          source: "./dist/*"
+          source: "artifacts/wigle-map/dist/public/*"
           target: "/var/www/frontend"
 
-  build_backend:
-    name: Build Backend
+  backend:
+    name: Backend Build and Deploy
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Setup Node.js
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
-          node-version: '20.x'
+          node-version: 20
+          cache: pnpm
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v2
+        uses: pnpm/action-setup@v4
         with:
-          version: 8
+          version: 10
 
       - name: Install dependencies
-        run: pnpm install
+        run: pnpm install --frozen-lockfile
 
-      - name: Build
-        run: pnpm --filter api-server... build
+      - name: Build backend
+        run: pnpm --filter @workspace/api-server run build
 
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: backend-build
-          path: |
-            ./artifacts/api-server/build
-            ./artifacts/api-server/package.json
-            ./pnpm-lock.yaml
-
-  deploy_backend:
-    name: Deploy Backend
-    needs: build_backend
-    runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
-    steps:
-      - name: Download artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: backend-build
-          path: ./backend
-
-      - name: Deploy to server
-        uses: appleboy/scp-action@master
+      - name: Upload backend bundle
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: appleboy/scp-action@v1
         with:
           host: ${{ secrets.BACKEND_HOST }}
           username: ${{ secrets.BACKEND_USER }}
           key: ${{ secrets.BACKEND_KEY }}
-          source: "./backend/*"
-          target: "/var/www/backend"
+          source: "artifacts/api-server/dist/*"
+          target: "/var/www/backend/dist"
 
-      - name: Install dependencies and restart
-        uses: appleboy/ssh-action@master
+      - name: Restart backend service
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.BACKEND_HOST }}
           username: ${{ secrets.BACKEND_USER }}
           key: ${{ secrets.BACKEND_KEY }}
           script: |
+            set -e
             cd /var/www/backend
-            pnpm install --prod
-            pm2 restart api-server || pm2 start dist/index.js --name api-server
+            export PORT='${{ secrets.BACKEND_PORT }}'
+            if [ -z "$PORT" ]; then PORT=3000; fi
+            export WIGLE_API_NAME='${{ secrets.WIGLE_API_NAME }}'
+            export WIGLE_API_TOKEN='${{ secrets.WIGLE_API_TOKEN }}'
+
+            if pm2 describe api-server >/dev/null 2>&1; then
+              pm2 restart api-server --update-env
+            else
+              pm2 start dist/index.mjs --name api-server --update-env
+            fi
+
+            pm2 save
