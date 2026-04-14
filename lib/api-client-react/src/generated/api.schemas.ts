@@ -141,8 +141,11 @@ export type SearchNetworksEncryption =
   (typeof SearchNetworksEncryption)[keyof typeof SearchNetworksEncryption];
 
 export const SearchNetworksEncryption = {
-  on: "on",
-  off: "off",
+  None: "None",
+  WPA3: "WPA3",
+  WPA2: "WPA2",
+  WPA: "WPA",
+  WEP: "WEP",
   Unknown: "Unknown",
 } as const;
 

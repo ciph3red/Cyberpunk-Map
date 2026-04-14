@@ -134,6 +134,7 @@ export function Sidebar({ onSearch, onScanArea, results, totalResults, onSelectR
                 <SelectContent className="bg-black border-primary rounded-none font-mono">
                   <SelectItem value="any">ANY</SelectItem>
                   <SelectItem value="None">OPEN (None)</SelectItem>
+                  <SelectItem value="WPA3">WPA3</SelectItem>
                   <SelectItem value="WPA2">WPA2</SelectItem>
                   <SelectItem value="WPA">WPA</SelectItem>
                   <SelectItem value="WEP">WEP</SelectItem>
