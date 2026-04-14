@@ -1,24 +1,18 @@
 import { useState } from "react";
-import { useSearchNetworks } from "@workspace/api-client-react";
-import { SearchNetworksParams } from "@workspace/api-client-react/src/generated/api.schemas";
+import { useSearchNetworks, getSearchNetworksQueryKey, SearchNetworksParams, WiFiNetwork } from "@workspace/api-client-react";
 import { WigleMap } from "@/components/Map";
 import { Sidebar } from "@/components/Sidebar";
 import { StatsPanel } from "@/components/StatsPanel";
-import { WiFiNetwork } from "@workspace/api-client-react/src/generated/api.schemas";
-import { getSearchNetworksQueryKey } from "@workspace/api-client-react";
-import { ApiError } from "@workspace/api-client-react/src/custom-fetch";
 
 function getErrorMessage(error: unknown): string {
-  if (error instanceof ApiError) {
-    if (error.status === 429) return "[ERR 429] RATE_LIMIT_EXCEEDED — WiGLE daily query quota hit. Try again tomorrow.";
-    if (error.status === 401 || error.status === 403) return "[ERR " + error.status + "] AUTH_FAILED — Check your API credentials.";
-    if (error.status === 400) {
-      const msg = (error.data as any)?.message ?? "";
-      return "[ERR 400] BAD_REQUEST — " + (msg || "Invalid search parameters.");
-    }
-    return "[ERR " + error.status + "] " + error.message;
-  }
-  if (error instanceof Error) return "[ERR] " + error.message;
+  const status = (error as any)?.status as number | undefined;
+  const message = (error as any)?.message as string | undefined;
+  const dataMsg = (error as any)?.data?.message as string | undefined;
+  if (status === 429) return "[ERR 429] RATE_LIMIT_EXCEEDED — WiGLE daily query quota hit. Try again tomorrow.";
+  if (status === 401 || status === 403) return `[ERR ${status}] AUTH_FAILED — Check your API credentials.`;
+  if (status === 400) return `[ERR 400] BAD_REQUEST — ${dataMsg || "Invalid search parameters."}`;
+  if (status) return `[ERR ${status}] ${message ?? "Request failed."}`;
+  if (error instanceof Error) return `[ERR] ${error.message}`;
   return "[ERR] UNKNOWN_FAILURE";
 }
 

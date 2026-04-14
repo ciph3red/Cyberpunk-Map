@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { WiFiNetwork } from "@workspace/api-client-react/src/generated/api.schemas";
+import { WiFiNetwork } from "@workspace/api-client-react";
 import { Badge } from "@/components/ui/badge";
 
 interface SidebarProps {

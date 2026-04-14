@@ -1,8 +1,7 @@
 import { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import { MapContainer, TileLayer, CircleMarker, Popup, useMap, useMapEvents } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
-import { useSearchNetworks, getSearchNetworksQueryKey } from "@workspace/api-client-react";
-import { WiFiNetwork } from "@workspace/api-client-react/src/generated/api.schemas";
+import { useSearchNetworks, getSearchNetworksQueryKey, WiFiNetwork } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 
 interface MapEventsProps {
