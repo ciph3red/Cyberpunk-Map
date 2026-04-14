@@ -6,6 +6,21 @@ import { Sidebar } from "@/components/Sidebar";
 import { StatsPanel } from "@/components/StatsPanel";
 import { WiFiNetwork } from "@workspace/api-client-react/src/generated/api.schemas";
 import { getSearchNetworksQueryKey } from "@workspace/api-client-react";
+import { ApiError } from "@workspace/api-client-react/src/custom-fetch";
+
+function getErrorMessage(error: unknown): string {
+  if (error instanceof ApiError) {
+    if (error.status === 429) return "[ERR 429] RATE_LIMIT_EXCEEDED — WiGLE daily query quota hit. Try again tomorrow.";
+    if (error.status === 401 || error.status === 403) return "[ERR " + error.status + "] AUTH_FAILED — Check your API credentials.";
+    if (error.status === 400) {
+      const msg = (error.data as any)?.message ?? "";
+      return "[ERR 400] BAD_REQUEST — " + (msg || "Invalid search parameters.");
+    }
+    return "[ERR " + error.status + "] " + error.message;
+  }
+  if (error instanceof Error) return "[ERR] " + error.message;
+  return "[ERR] UNKNOWN_FAILURE";
+}
 
 export default function Home() {
   const [bounds, setBounds] = useState({
@@ -22,7 +37,7 @@ export default function Home() {
 
   const [targetCoords, setTargetCoords] = useState<[number, number] | null>(null);
 
-  const { data, isLoading, isError } = useSearchNetworks(searchParams, {
+  const { data, isLoading, isError, error } = useSearchNetworks(searchParams, {
     query: {
       enabled: true,
       queryKey: getSearchNetworksQueryKey(searchParams),
@@ -64,8 +79,8 @@ export default function Home() {
 
         {/* Error Overlay */}
         {isError && (
-          <div className="absolute top-4 left-1/2 -translate-x-1/2 z-[1000] bg-black/90 p-4 border border-destructive text-destructive cyber-glow-destructive flex items-center gap-2 font-bold">
-            [ERR] CONNECTION_REFUSED
+          <div className="absolute top-4 left-1/2 -translate-x-1/2 z-[1000] bg-black/90 px-5 py-3 border border-red-500 text-red-400 flex items-center gap-2 font-bold text-sm max-w-xl text-center" style={{boxShadow:"0 0 12px #ff000080"}}>
+            {getErrorMessage(error)}
           </div>
         )}
       </div>

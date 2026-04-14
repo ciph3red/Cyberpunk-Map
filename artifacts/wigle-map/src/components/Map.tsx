@@ -9,15 +9,18 @@ interface MapEventsProps {
   onBoundsChange: (bounds: { latrange1: number; latrange2: number; longrange1: number; longrange2: number }) => void;
 }
 
+function clampLng(v: number) { return Math.max(-180, Math.min(180, v)); }
+function clampLat(v: number) { return Math.max(-90, Math.min(90, v)); }
+
 function MapEvents({ onBoundsChange }: MapEventsProps) {
   const map = useMapEvents({
     moveend: () => {
       const bounds = map.getBounds();
       onBoundsChange({
-        latrange1: bounds.getSouth(),
-        latrange2: bounds.getNorth(),
-        longrange1: bounds.getWest(),
-        longrange2: bounds.getEast(),
+        latrange1: clampLat(bounds.getSouth()),
+        latrange2: clampLat(bounds.getNorth()),
+        longrange1: clampLng(bounds.getWest()),
+        longrange2: clampLng(bounds.getEast()),
       });
     },
   });
