@@ -8,3 +8,116 @@
 export interface HealthStatus {
   status: string;
 }
+
+export interface WiFiNetwork {
+  /** BSSID (MAC address) */
+  netid: string;
+  /** Network name */
+  ssid: string;
+  /** Latitude */
+  trilat: number;
+  /** Longitude */
+  trilong: number;
+  /** Signal strength in dBm */
+  signal?: number;
+  /** WiFi channel */
+  channel?: number;
+  /** Encryption type */
+  encryption?: string;
+  /** First observed timestamp */
+  firsttime?: string;
+  /** Last observed timestamp */
+  lasttime?: string;
+  /** Last update timestamp */
+  lastupdt?: string;
+  /** Network type (WiFi, etc.) */
+  type?: string;
+  country?: string;
+  region?: string;
+  city?: string;
+  housenumber?: string;
+  road?: string;
+  postalcode?: string;
+}
+
+export interface NetworkSearchResult {
+  success: boolean;
+  totalResults: number;
+  search_after?: number;
+  first?: number;
+  last?: number;
+  resultCount: number;
+  results: WiFiNetwork[];
+}
+
+export interface WigleStats {
+  success: boolean;
+  netwpa2?: number;
+  netwpa?: number;
+  netwep?: number;
+  netwpawpa2?: number;
+  netnoenc?: number;
+  nettotal: number;
+  lastUpdated?: string;
+}
+
+export type UserStatsStatistics = {
+  totalWiFiLocations?: number;
+  last1MonthWiFiLocations?: number;
+};
+
+export interface UserStats {
+  success: boolean;
+  userName?: string;
+  rank?: number;
+  monthRank?: number;
+  statistics?: UserStatsStatistics;
+}
+
+export type SearchNetworksParams = {
+  /**
+   * Network SSID to search for
+   */
+  ssid?: string;
+  /**
+   * Latitude range start
+   */
+  latrange1?: number;
+  /**
+   * Latitude range end
+   */
+  latrange2?: number;
+  /**
+   * Longitude range start
+   */
+  longrange1?: number;
+  /**
+   * Longitude range end
+   */
+  longrange2?: number;
+  /**
+   * Last update date filter (YYYYMMDD format)
+   */
+  lastupdt?: string;
+  /**
+   * Number of results per page
+   */
+  resultsPerPage?: number;
+  /**
+   * Pagination offset
+   */
+  searchAfter?: number;
+  /**
+   * Encryption type filter
+   */
+  encryption?: SearchNetworksEncryption;
+};
+
+export type SearchNetworksEncryption =
+  (typeof SearchNetworksEncryption)[keyof typeof SearchNetworksEncryption];
+
+export const SearchNetworksEncryption = {
+  on: "on",
+  off: "off",
+  Unknown: "Unknown",
+} as const;

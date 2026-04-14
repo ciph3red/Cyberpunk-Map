@@ -14,3 +14,92 @@ import * as zod from "zod";
 export const HealthCheckResponse = zod.object({
   status: zod.string(),
 });
+
+/**
+ * Search for WiFi networks using the WiGLE API
+ * @summary Search WiFi networks
+ */
+export const searchNetworksQueryResultsPerPageDefault = 100;
+
+export const SearchNetworksQueryParams = zod.object({
+  ssid: zod.coerce.string().optional().describe("Network SSID to search for"),
+  latrange1: zod.coerce.number().optional().describe("Latitude range start"),
+  latrange2: zod.coerce.number().optional().describe("Latitude range end"),
+  longrange1: zod.coerce.number().optional().describe("Longitude range start"),
+  longrange2: zod.coerce.number().optional().describe("Longitude range end"),
+  lastupdt: zod.coerce
+    .string()
+    .optional()
+    .describe("Last update date filter (YYYYMMDD format)"),
+  resultsPerPage: zod.coerce
+    .number()
+    .default(searchNetworksQueryResultsPerPageDefault)
+    .describe("Number of results per page"),
+  searchAfter: zod.coerce.number().optional().describe("Pagination offset"),
+  encryption: zod
+    .enum(["on", "off", "Unknown"])
+    .optional()
+    .describe("Encryption type filter"),
+});
+
+export const SearchNetworksResponse = zod.object({
+  success: zod.boolean(),
+  totalResults: zod.number(),
+  search_after: zod.number().optional(),
+  first: zod.number().optional(),
+  last: zod.number().optional(),
+  resultCount: zod.number(),
+  results: zod.array(
+    zod.object({
+      netid: zod.string().describe("BSSID (MAC address)"),
+      ssid: zod.string().describe("Network name"),
+      trilat: zod.number().describe("Latitude"),
+      trilong: zod.number().describe("Longitude"),
+      signal: zod.number().optional().describe("Signal strength in dBm"),
+      channel: zod.number().optional().describe("WiFi channel"),
+      encryption: zod.string().optional().describe("Encryption type"),
+      firsttime: zod.string().optional().describe("First observed timestamp"),
+      lasttime: zod.string().optional().describe("Last observed timestamp"),
+      lastupdt: zod.string().optional().describe("Last update timestamp"),
+      type: zod.string().optional().describe("Network type (WiFi, etc.)"),
+      country: zod.string().optional(),
+      region: zod.string().optional(),
+      city: zod.string().optional(),
+      housenumber: zod.string().optional(),
+      road: zod.string().optional(),
+      postalcode: zod.string().optional(),
+    }),
+  ),
+});
+
+/**
+ * Get general WiGLE network statistics
+ * @summary Get WiGLE statistics
+ */
+export const GetStatsResponse = zod.object({
+  success: zod.boolean(),
+  netwpa2: zod.number().optional(),
+  netwpa: zod.number().optional(),
+  netwep: zod.number().optional(),
+  netwpawpa2: zod.number().optional(),
+  netnoenc: zod.number().optional(),
+  nettotal: zod.number(),
+  lastUpdated: zod.string().optional(),
+});
+
+/**
+ * Get statistics for the authenticated WiGLE user
+ * @summary Get user statistics
+ */
+export const GetUserStatsResponse = zod.object({
+  success: zod.boolean(),
+  userName: zod.string().optional(),
+  rank: zod.number().optional(),
+  monthRank: zod.number().optional(),
+  statistics: zod
+    .object({
+      totalWiFiLocations: zod.number().optional(),
+      last1MonthWiFiLocations: zod.number().optional(),
+    })
+    .optional(),
+});

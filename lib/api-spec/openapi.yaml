@@ -10,6 +10,8 @@ servers:
 tags:
   - name: health
     description: Health operations
+  - name: wigle
+    description: WiGLE WiFi network operations
 paths:
   /healthz:
     get:
@@ -24,6 +26,105 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /wigle/search:
+    get:
+      operationId: searchNetworks
+      tags: [wigle]
+      summary: Search WiFi networks
+      description: Search for WiFi networks using the WiGLE API
+      parameters:
+        - name: ssid
+          in: query
+          schema:
+            type: string
+          description: Network SSID to search for
+        - name: latrange1
+          in: query
+          schema:
+            type: number
+          description: Latitude range start
+        - name: latrange2
+          in: query
+          schema:
+            type: number
+          description: Latitude range end
+        - name: longrange1
+          in: query
+          schema:
+            type: number
+          description: Longitude range start
+        - name: longrange2
+          in: query
+          schema:
+            type: number
+          description: Longitude range end
+        - name: lastupdt
+          in: query
+          schema:
+            type: string
+          description: Last update date filter (YYYYMMDD format)
+        - name: resultsPerPage
+          in: query
+          schema:
+            type: integer
+            default: 100
+          description: Number of results per page
+        - name: searchAfter
+          in: query
+          schema:
+            type: integer
+          description: Pagination offset
+        - name: encryption
+          in: query
+          schema:
+            type: string
+            enum: [on, off, Unknown]
+          description: Encryption type filter
+      responses:
+        "200":
+          description: Search results
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NetworkSearchResult"
+        "401":
+          description: Unauthorized
+        "429":
+          description: Rate limit exceeded
+
+  /wigle/stats:
+    get:
+      operationId: getStats
+      tags: [wigle]
+      summary: Get WiGLE statistics
+      description: Get general WiGLE network statistics
+      responses:
+        "200":
+          description: Stats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WigleStats"
+        "401":
+          description: Unauthorized
+
+  /wigle/user/stats:
+    get:
+      operationId: getUserStats
+      tags: [wigle]
+      summary: Get user statistics
+      description: Get statistics for the authenticated WiGLE user
+      responses:
+        "200":
+          description: User stats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserStats"
+        "401":
+          description: Unauthorized
+
 components:
   schemas:
     HealthStatus:
@@ -34,3 +135,125 @@ components:
       required:
         - status
 
+    WiFiNetwork:
+      type: object
+      properties:
+        netid:
+          type: string
+          description: BSSID (MAC address)
+        ssid:
+          type: string
+          description: Network name
+        trilat:
+          type: number
+          description: Latitude
+        trilong:
+          type: number
+          description: Longitude
+        signal:
+          type: number
+          description: Signal strength in dBm
+        channel:
+          type: number
+          description: WiFi channel
+        encryption:
+          type: string
+          description: Encryption type
+        firsttime:
+          type: string
+          description: First observed timestamp
+        lasttime:
+          type: string
+          description: Last observed timestamp
+        lastupdt:
+          type: string
+          description: Last update timestamp
+        type:
+          type: string
+          description: Network type (WiFi, etc.)
+        country:
+          type: string
+        region:
+          type: string
+        city:
+          type: string
+        housenumber:
+          type: string
+        road:
+          type: string
+        postalcode:
+          type: string
+      required:
+        - netid
+        - ssid
+        - trilat
+        - trilong
+
+    NetworkSearchResult:
+      type: object
+      properties:
+        success:
+          type: boolean
+        totalResults:
+          type: integer
+        search_after:
+          type: integer
+        first:
+          type: integer
+        last:
+          type: integer
+        resultCount:
+          type: integer
+        results:
+          type: array
+          items:
+            $ref: "#/components/schemas/WiFiNetwork"
+      required:
+        - success
+        - totalResults
+        - resultCount
+        - results
+
+    WigleStats:
+      type: object
+      properties:
+        success:
+          type: boolean
+        netwpa2:
+          type: integer
+        netwpa:
+          type: integer
+        netwep:
+          type: integer
+        netwpawpa2:
+          type: integer
+        netnoenc:
+          type: integer
+        nettotal:
+          type: integer
+        lastUpdated:
+          type: string
+      required:
+        - success
+        - nettotal
+
+    UserStats:
+      type: object
+      properties:
+        success:
+          type: boolean
+        userName:
+          type: string
+        rank:
+          type: integer
+        monthRank:
+          type: integer
+        statistics:
+          type: object
+          properties:
+            totalWiFiLocations:
+              type: integer
+            last1MonthWiFiLocations:
+              type: integer
+      required:
+        - success

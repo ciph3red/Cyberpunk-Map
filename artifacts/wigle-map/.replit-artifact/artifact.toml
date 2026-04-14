@@ -1,0 +1,31 @@
+kind = "web"
+previewPath = "/"
+title = "WiGLE Cyberpunk Map"
+version = "1.0.0"
+id = "artifacts/wigle-map"
+router = "path"
+
+[[integratedSkills]]
+name = "react-vite"
+version = "1.0.0"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 19003
+
+[services.development]
+run = "pnpm --filter @workspace/wigle-map run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/wigle-map", "run", "build" ]
+publicDir = "artifacts/wigle-map/dist/public"
+serve = "static"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "19003"
+BASE_PATH = "/"

@@ -13,7 +13,13 @@ import type {
   UseQueryResult,
 } from "@tanstack/react-query";
 
-import type { HealthStatus } from "./api.schemas";
+import type {
+  HealthStatus,
+  NetworkSearchResult,
+  SearchNetworksParams,
+  UserStats,
+  WigleStats,
+} from "./api.schemas";
 
 import { customFetch } from "../custom-fetch";
 import type { ErrorType } from "../custom-fetch";
@@ -92,6 +98,243 @@ export function useHealthCheck<
   request?: SecondParameter<typeof customFetch>;
 }): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
   const queryOptions = getHealthCheckQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * Search for WiFi networks using the WiGLE API
+ * @summary Search WiFi networks
+ */
+export const getSearchNetworksUrl = (params?: SearchNetworksParams) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/wigle/search?${stringifiedParams}`
+    : `/api/wigle/search`;
+};
+
+export const searchNetworks = async (
+  params?: SearchNetworksParams,
+  options?: RequestInit,
+): Promise<NetworkSearchResult> => {
+  return customFetch<NetworkSearchResult>(getSearchNetworksUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getSearchNetworksQueryKey = (params?: SearchNetworksParams) => {
+  return [`/api/wigle/search`, ...(params ? [params] : [])] as const;
+};
+
+export const getSearchNetworksQueryOptions = <
+  TData = Awaited<ReturnType<typeof searchNetworks>>,
+  TError = ErrorType<void>,
+>(
+  params?: SearchNetworksParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof searchNetworks>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getSearchNetworksQueryKey(params);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof searchNetworks>>> = ({
+    signal,
+  }) => searchNetworks(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof searchNetworks>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type SearchNetworksQueryResult = NonNullable<
+  Awaited<ReturnType<typeof searchNetworks>>
+>;
+export type SearchNetworksQueryError = ErrorType<void>;
+
+/**
+ * @summary Search WiFi networks
+ */
+
+export function useSearchNetworks<
+  TData = Awaited<ReturnType<typeof searchNetworks>>,
+  TError = ErrorType<void>,
+>(
+  params?: SearchNetworksParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof searchNetworks>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getSearchNetworksQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * Get general WiGLE network statistics
+ * @summary Get WiGLE statistics
+ */
+export const getGetStatsUrl = () => {
+  return `/api/wigle/stats`;
+};
+
+export const getStats = async (options?: RequestInit): Promise<WigleStats> => {
+  return customFetch<WigleStats>(getGetStatsUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetStatsQueryKey = () => {
+  return [`/api/wigle/stats`] as const;
+};
+
+export const getGetStatsQueryOptions = <
+  TData = Awaited<ReturnType<typeof getStats>>,
+  TError = ErrorType<void>,
+>(options?: {
+  query?: UseQueryOptions<Awaited<ReturnType<typeof getStats>>, TError, TData>;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetStatsQueryKey();
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getStats>>> = ({
+    signal,
+  }) => getStats({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getStats>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetStatsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getStats>>
+>;
+export type GetStatsQueryError = ErrorType<void>;
+
+/**
+ * @summary Get WiGLE statistics
+ */
+
+export function useGetStats<
+  TData = Awaited<ReturnType<typeof getStats>>,
+  TError = ErrorType<void>,
+>(options?: {
+  query?: UseQueryOptions<Awaited<ReturnType<typeof getStats>>, TError, TData>;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetStatsQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * Get statistics for the authenticated WiGLE user
+ * @summary Get user statistics
+ */
+export const getGetUserStatsUrl = () => {
+  return `/api/wigle/user/stats`;
+};
+
+export const getUserStats = async (
+  options?: RequestInit,
+): Promise<UserStats> => {
+  return customFetch<UserStats>(getGetUserStatsUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetUserStatsQueryKey = () => {
+  return [`/api/wigle/user/stats`] as const;
+};
+
+export const getGetUserStatsQueryOptions = <
+  TData = Awaited<ReturnType<typeof getUserStats>>,
+  TError = ErrorType<void>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getUserStats>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetUserStatsQueryKey();
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getUserStats>>> = ({
+    signal,
+  }) => getUserStats({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getUserStats>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetUserStatsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getUserStats>>
+>;
+export type GetUserStatsQueryError = ErrorType<void>;
+
+/**
+ * @summary Get user statistics
+ */
+
+export function useGetUserStats<
+  TData = Awaited<ReturnType<typeof getUserStats>>,
+  TError = ErrorType<void>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getUserStats>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetUserStatsQueryOptions(options);
 
   const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
     queryKey: QueryKey;

@@ -7,3 +7,10 @@
  */
 
 export * from "./healthStatus";
+export * from "./networkSearchResult";
+export * from "./searchNetworksEncryption";
+export * from "./searchNetworksParams";
+export * from "./userStats";
+export * from "./userStatsStatistics";
+export * from "./wiFiNetwork";
+export * from "./wigleStats";
