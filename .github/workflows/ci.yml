@@ -48,14 +48,34 @@ jobs:
 
       - name: Deploy frontend
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        uses: appleboy/scp-action@v1
-        with:
-          host: ${{ secrets.FRONTEND_HOST }}
-          port: 8123
-          username: ${{ secrets.FRONTEND_USER }}
-          key: ${{ secrets.FRONTEND_KEY }}
-          source: "artifacts/wigle-map/dist/public/*"
-          target: "/var/www/frontend"
+        env:
+          FRONTEND_HOST: ${{ secrets.FRONTEND_HOST }}
+          FRONTEND_USER: ${{ secrets.FRONTEND_USER }}
+          FRONTEND_KEY: ${{ secrets.FRONTEND_KEY }}
+        run: |
+          set -euo pipefail
+
+          mkdir -p ~/.ssh
+          KEY_FILE="$HOME/.ssh/frontend_deploy_key"
+
+          if printf '%s' "$FRONTEND_KEY" | grep -q "BEGIN .* PRIVATE KEY"; then
+            printf '%s\n' "$FRONTEND_KEY" > "$KEY_FILE"
+          elif printf '%s' "$FRONTEND_KEY" | grep -q '^ssh-'; then
+            echo "FRONTEND_KEY looks like a public key. Please store the private key in the FRONTEND_KEY secret."
+            exit 1
+          else
+            printf '%s' "$FRONTEND_KEY" | base64 -d > "$KEY_FILE" 2>/dev/null || {
+              echo "FRONTEND_KEY is not valid private key text or base64 private key."
+              exit 1
+            }
+          fi
+
+          chmod 600 "$KEY_FILE"
+          ssh-keyscan -p 8123 "$FRONTEND_HOST" >> ~/.ssh/known_hosts 2>/dev/null || true
+
+          scp -P 8123 -i "$KEY_FILE" -o StrictHostKeyChecking=accept-new -r \
+            artifacts/wigle-map/dist/public/* \
+            "$FRONTEND_USER@$FRONTEND_HOST:/var/www/frontend/"
 
   backend:
     name: Backend Build and Deploy
@@ -116,12 +136,22 @@ jobs:
               fi
             fi
 
+            SRC_DIR="$HOME/api-server-dist"
+            if [ -d "$SRC_DIR/artifacts/api-server/dist" ]; then
+              SRC_DIR="$SRC_DIR/artifacts/api-server/dist"
+            fi
+
+            if [ ! -d "$SRC_DIR" ]; then
+              echo "Uploaded backend bundle not found at expected path"
+              exit 1
+            fi
+
             $SUDO mkdir -p "$DEPLOY_DIR/dist"
             if command -v rsync >/dev/null 2>&1; then
-              $SUDO rsync -av --delete ~/api-server-dist/ "$DEPLOY_DIR/dist/"
+              $SUDO rsync -av --delete "$SRC_DIR/" "$DEPLOY_DIR/dist/"
             else
               $SUDO find "$DEPLOY_DIR/dist" -mindepth 1 -delete
-              $SUDO cp -a ~/api-server-dist/. "$DEPLOY_DIR/dist/"
+              $SUDO cp -a "$SRC_DIR/." "$DEPLOY_DIR/dist/"
             fi
 
             cd "$DEPLOY_DIR"
@@ -129,6 +159,22 @@ jobs:
             if [ -z "$PORT" ]; then PORT=3000; fi
             export WIGLE_API_NAME='${{ secrets.WIGLE_API_NAME }}'
             export WIGLE_API_TOKEN='${{ secrets.WIGLE_API_TOKEN }}'
+
+            if ! command -v pm2 >/dev/null 2>&1; then
+              if command -v npm >/dev/null 2>&1; then
+                if [ -n "$SUDO" ]; then
+                  $SUDO npm install -g pm2
+                else
+                  npm install -g pm2
+                fi
+                export PATH="$PATH:$(npm prefix -g)/bin"
+              fi
+            fi
+
+            if ! command -v pm2 >/dev/null 2>&1; then
+              echo "pm2 is not installed and could not be installed automatically"
+              exit 1
+            fi
 
             if pm2 describe api-server >/dev/null 2>&1; then
               pm2 restart api-server --update-env
