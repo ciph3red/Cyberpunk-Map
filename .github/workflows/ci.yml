@@ -51,6 +51,7 @@ jobs:
         uses: appleboy/scp-action@v1
         with:
           host: ${{ secrets.FRONTEND_HOST }}
+          port: 8123
           username: ${{ secrets.FRONTEND_USER }}
           key: ${{ secrets.FRONTEND_KEY }}
           source: "artifacts/wigle-map/dist/public/*"
@@ -91,7 +92,7 @@ jobs:
           username: ${{ secrets.BACKEND_USER }}
           key: ${{ secrets.BACKEND_KEY }}
           source: "artifacts/api-server/dist/*"
-          target: "/var/www/backend/dist"
+          target: "~/api-server-dist"
 
       - name: Restart backend service
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
@@ -102,7 +103,28 @@ jobs:
           key: ${{ secrets.BACKEND_KEY }}
           script: |
             set -e
-            cd /var/www/backend
+            DEPLOY_DIR="${{ secrets.BACKEND_DEPLOY_DIR }}"
+            if [ -z "$DEPLOY_DIR" ]; then DEPLOY_DIR="/var/www/backend"; fi
+
+            SUDO=""
+            if [ ! -w "$DEPLOY_DIR" ] && [ ! -w "$(dirname "$DEPLOY_DIR")" ]; then
+              if command -v sudo >/dev/null 2>&1; then
+                SUDO="sudo"
+              else
+                echo "No write access to $DEPLOY_DIR and sudo is unavailable"
+                exit 1
+              fi
+            fi
+
+            $SUDO mkdir -p "$DEPLOY_DIR/dist"
+            if command -v rsync >/dev/null 2>&1; then
+              $SUDO rsync -av --delete ~/api-server-dist/ "$DEPLOY_DIR/dist/"
+            else
+              $SUDO find "$DEPLOY_DIR/dist" -mindepth 1 -delete
+              $SUDO cp -a ~/api-server-dist/. "$DEPLOY_DIR/dist/"
+            fi
+
+            cd "$DEPLOY_DIR"
             export PORT='${{ secrets.BACKEND_PORT }}'
             if [ -z "$PORT" ]; then PORT=3000; fi
             export WIGLE_API_NAME='${{ secrets.WIGLE_API_NAME }}'
