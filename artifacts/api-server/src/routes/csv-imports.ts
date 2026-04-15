@@ -39,7 +39,7 @@ function isFiniteNumber(value: unknown): value is number {
 
 function toOptionalString(value: unknown): string | undefined {
   if (typeof value !== "string") return undefined;
-  const trimmed = value.trim();
+  const trimmed = value.trim().replace(/\u0000/g, "");
   return trimmed ? trimmed : undefined;
 }
 
@@ -48,7 +48,7 @@ function normalizeNetwork(input: unknown): PersistedNetwork | null {
   const row = input as JsonRecord;
 
   const netid = toOptionalString(row.netid);
-  const ssid = typeof row.ssid === "string" ? row.ssid : "";
+  const ssid = typeof row.ssid === "string" ? row.ssid.replace(/\u0000/g, "") : "";
   const trilat = row.trilat;
   const trilong = row.trilong;
 
