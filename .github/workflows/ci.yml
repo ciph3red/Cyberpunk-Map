@@ -58,8 +58,7 @@ jobs:
           set -euo pipefail
 
           if [ -z "$FRONTEND_API_BASE_URL" ]; then
-            echo "Missing FRONTEND_API_BASE_URL secret. Set it to your backend origin, e.g. https://api.example.com"
-            exit 1
+            echo "FRONTEND_API_BASE_URL not set. Deployment will continue; users can configure API URL in-app."
           fi
 
           mkdir -p ~/.ssh
