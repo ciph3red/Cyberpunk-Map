@@ -211,6 +211,11 @@ jobs:
             export REQUEST_BODY_LIMIT='${{ secrets.BACKEND_REQUEST_BODY_LIMIT }}'
             if [ -z "$REQUEST_BODY_LIMIT" ]; then REQUEST_BODY_LIMIT='100mb'; fi
 
+            if [ -n "$DATABASE_URL" ] && echo "$DATABASE_URL" | grep -Eq '^https?://'; then
+              echo "Warning: BACKEND_DATABASE_URL is an HTTP URL, not a PostgreSQL connection string. Falling back to local socket URL."
+              export DATABASE_URL='postgresql://frontend@/wigle?host=/var/run/postgresql'
+            fi
+
             if [ -z "$DATABASE_URL" ]; then
               echo "Warning: BACKEND_DATABASE_URL is not set. CSV server-side persistence endpoints will fail until DATABASE_URL is configured."
             fi
