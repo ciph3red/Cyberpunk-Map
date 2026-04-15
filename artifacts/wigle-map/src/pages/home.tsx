@@ -3,6 +3,7 @@ import { useSearchNetworks, getSearchNetworksQueryKey, SearchNetworksParams, WiF
 import { WigleMap } from "@/components/Map";
 import { Sidebar } from "@/components/Sidebar";
 import { StatsPanel } from "@/components/StatsPanel";
+import { useQueryClient } from "@tanstack/react-query";
 
 function getErrorMessage(error: unknown): string {
   const status = (error as any)?.status as number | undefined;
@@ -17,6 +18,8 @@ function getErrorMessage(error: unknown): string {
 }
 
 export default function Home() {
+  const queryClient = useQueryClient();
+
   const [bounds, setBounds] = useState({
     latrange1: 37.7,
     latrange2: 37.8,
@@ -74,6 +77,12 @@ export default function Home() {
     setImportedFileName(null);
   };
 
+  const handleApiSettingsChanged = () => {
+    setImportedNetworks(null);
+    setImportedFileName(null);
+    void queryClient.invalidateQueries();
+  };
+
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-black text-primary font-mono select-none">
       {/* Main Map Area */}
@@ -123,6 +132,7 @@ export default function Home() {
           importedFileName={importedFileName}
           importedCount={importedNetworks?.length || 0}
           isImportedMode={isImportedMode}
+          onApiSettingsChanged={handleApiSettingsChanged}
         />
       </div>
 

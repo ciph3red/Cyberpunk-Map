@@ -6,6 +6,12 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { WiFiNetwork } from "@workspace/api-client-react";
 import { Badge } from "@/components/ui/badge";
 import { parseWigleCsvToNetworks } from "@/lib/parse-wigle-csv";
+import {
+  applyUserApiSettings,
+  loadUserApiSettings,
+  saveUserApiSettings,
+  UserApiSettings,
+} from "@/lib/user-api-settings";
 
 interface SidebarProps {
   onSearch: (params: any) => void;
@@ -19,6 +25,7 @@ interface SidebarProps {
   importedFileName: string | null;
   importedCount: number;
   isImportedMode: boolean;
+  onApiSettingsChanged: () => void;
 }
 
 const CELL_TYPES = ["GSM", "UMTS", "LTE", "CDMA", "WCDMA", "NR"];
@@ -46,6 +53,7 @@ export function Sidebar({
   importedFileName,
   importedCount,
   isImportedMode,
+  onApiSettingsChanged,
 }: SidebarProps) {
   const [ssid, setSsid] = useState("");
   const [netid, setNetid] = useState("");
@@ -57,6 +65,10 @@ export function Sidebar({
   const [variance, setVariance] = useState("");
   const [importError, setImportError] = useState<string | null>(null);
   const [isImporting, setIsImporting] = useState(false);
+  const [apiSettings, setApiSettings] = useState<UserApiSettings>(() =>
+    loadUserApiSettings(),
+  );
+  const [apiSettingsNotice, setApiSettingsNotice] = useState<string | null>(null);
 
   const isWifi = netType === "any" || netType === "WiFi";
   const isBluetooth = netType === "BT" || netType === "BLE";
@@ -122,6 +134,42 @@ export function Sidebar({
       setIsImporting(false);
       event.target.value = "";
     }
+  };
+
+  const handleApplyApiSettings = () => {
+    const normalized = saveUserApiSettings(apiSettings);
+    setApiSettings(normalized);
+
+    applyUserApiSettings(
+      normalized,
+      typeof import.meta.env.VITE_API_BASE_URL === "string"
+        ? import.meta.env.VITE_API_BASE_URL
+        : null,
+    );
+
+    setApiSettingsNotice("API settings saved and applied.");
+    onApiSettingsChanged();
+  };
+
+  const handleResetApiSettings = () => {
+    const cleared: UserApiSettings = {
+      databaseApiUrl: "",
+      wigleApiName: "",
+      wigleApiToken: "",
+    };
+
+    saveUserApiSettings(cleared);
+    setApiSettings(cleared);
+
+    applyUserApiSettings(
+      cleared,
+      typeof import.meta.env.VITE_API_BASE_URL === "string"
+        ? import.meta.env.VITE_API_BASE_URL
+        : null,
+    );
+
+    setApiSettingsNotice("API settings reset to deployment defaults.");
+    onApiSettingsChanged();
   };
 
   return (
@@ -308,6 +356,79 @@ export function Sidebar({
             {importError && (
               <div className="text-xs text-red-400 border border-red-500/40 bg-red-900/10 px-2 py-1">
                 {importError}
+              </div>
+            )}
+          </div>
+
+          <div className="pt-2 mt-2 border-t border-primary/30 space-y-2">
+            <label className="text-xs uppercase text-primary/70">API Settings</label>
+
+            <div className="space-y-1">
+              <label className="text-[11px] uppercase text-primary/60">Database API URL</label>
+              <Input
+                value={apiSettings.databaseApiUrl}
+                onChange={(e) => {
+                  setApiSettingsNotice(null);
+                  setApiSettings((prev) => ({ ...prev, databaseApiUrl: e.target.value }));
+                }}
+                placeholder="https://api.example.com"
+                className="bg-black border-primary rounded-none focus-visible:ring-0 focus-visible:border-accent font-mono text-xs"
+              />
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-[11px] uppercase text-primary/60">WiGLE API Name</label>
+              <Input
+                value={apiSettings.wigleApiName}
+                onChange={(e) => {
+                  setApiSettingsNotice(null);
+                  setApiSettings((prev) => ({ ...prev, wigleApiName: e.target.value }));
+                }}
+                placeholder="YOUR_WIGLE_NAME"
+                className="bg-black border-primary rounded-none focus-visible:ring-0 focus-visible:border-accent font-mono text-xs"
+              />
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-[11px] uppercase text-primary/60">WiGLE API Token</label>
+              <Input
+                type="password"
+                value={apiSettings.wigleApiToken}
+                onChange={(e) => {
+                  setApiSettingsNotice(null);
+                  setApiSettings((prev) => ({ ...prev, wigleApiToken: e.target.value }));
+                }}
+                placeholder="YOUR_WIGLE_TOKEN"
+                className="bg-black border-primary rounded-none focus-visible:ring-0 focus-visible:border-accent font-mono text-xs"
+              />
+            </div>
+
+            <div className="text-[11px] text-primary/60 uppercase leading-relaxed">
+              WI-GLE credentials are sent to backend headers X-WIGLE-API-NAME and X-WIGLE-API-TOKEN.
+            </div>
+
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={handleApplyApiSettings}
+                className="flex-1 rounded-none border-primary hover:bg-primary hover:text-black font-bold uppercase transition-colors text-xs"
+              >
+                Apply APIs
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={handleResetApiSettings}
+                className="flex-1 rounded-none text-primary/70 hover:text-primary hover:bg-black text-xs uppercase"
+              >
+                Clear
+              </Button>
+            </div>
+
+            {apiSettingsNotice && (
+              <div className="text-xs text-accent border border-accent/40 bg-accent/10 px-2 py-1">
+                {apiSettingsNotice}
               </div>
             )}
           </div>

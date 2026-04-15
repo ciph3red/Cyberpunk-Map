@@ -1,22 +1,32 @@
-import { Router } from "express";
+import { Router, type Request } from "express";
 import { logger } from "../lib/logger";
 
 const router = Router();
 
 const WIGLE_BASE = "https://api.wigle.net/api/v2";
 
-function getWigleAuthHeader(): string {
-  const name = process.env.WIGLE_API_NAME;
-  const token = process.env.WIGLE_API_TOKEN;
+function getWigleAuthHeader(req: Request): string {
+  const name =
+    req.get("x-wigle-api-name")?.trim() || process.env.WIGLE_API_NAME;
+  const token =
+    req.get("x-wigle-api-token")?.trim() || process.env.WIGLE_API_TOKEN;
+
   if (!name || !token) {
-    throw new Error("WIGLE_API_NAME and WIGLE_API_TOKEN must be set");
+    throw new Error(
+      "WiGLE credentials missing. Set x-wigle-api-name/x-wigle-api-token headers or server env WIGLE_API_NAME/WIGLE_API_TOKEN.",
+    );
   }
+
   // Build Basic auth from the raw API name + raw API token
   const encoded = Buffer.from(`${name}:${token}`).toString("base64");
   return `Basic ${encoded}`;
 }
 
-async function wigleFetch(path: string, params?: Record<string, string>): Promise<{ status: number; ok: boolean; text: string }> {
+async function wigleFetch(
+  path: string,
+  authHeader: string,
+  params?: Record<string, string>,
+): Promise<{ status: number; ok: boolean; text: string }> {
   const url = new URL(`${WIGLE_BASE}${path}`);
   if (params) {
     for (const [k, v] of Object.entries(params)) {
@@ -27,7 +37,7 @@ async function wigleFetch(path: string, params?: Record<string, string>): Promis
   }
   const response = await fetch(url.toString(), {
     headers: {
-      Authorization: getWigleAuthHeader(),
+      Authorization: authHeader,
       Accept: "application/json",
     },
   });
@@ -46,6 +56,8 @@ function parseOrError(text: string): unknown {
 
 router.get("/wigle/search", async (req, res) => {
   try {
+    const authHeader = getWigleAuthHeader(req);
+
     const {
       ssid,
       ssidlike,
@@ -81,7 +93,11 @@ router.get("/wigle/search", async (req, res) => {
     if (paynet === "true") params.paynet = "true";
     if (variance) params.variance = variance;
 
-    const { status, ok, text } = await wigleFetch("/network/search", params);
+    const { status, ok, text } = await wigleFetch(
+      "/network/search",
+      authHeader,
+      params,
+    );
     const data = parseOrError(text);
 
     if (!ok) {
@@ -92,13 +108,16 @@ router.get("/wigle/search", async (req, res) => {
     res.json(data);
   } catch (err) {
     req.log.error({ err }, "WiGLE search error");
-    res.status(500).json({ success: false, error: "Internal server error" });
+    const message = err instanceof Error ? err.message : "Internal server error";
+    const status = message.startsWith("WiGLE credentials missing") ? 400 : 500;
+    res.status(status).json({ success: false, error: message });
   }
 });
 
 router.get("/wigle/stats", async (req, res) => {
   try {
-    const { ok, text } = await wigleFetch("/stats/site");
+    const authHeader = getWigleAuthHeader(req);
+    const { ok, text } = await wigleFetch("/stats/site", authHeader);
     if (ok) {
       const data = parseOrError(text);
       res.json({ success: true, ...(data as object) });
@@ -107,13 +126,16 @@ router.get("/wigle/stats", async (req, res) => {
     res.json({ success: true, nettotal: null });
   } catch (err) {
     req.log.error({ err }, "WiGLE stats error");
-    res.json({ success: true, nettotal: null });
+    const message = err instanceof Error ? err.message : "Internal server error";
+    const status = message.startsWith("WiGLE credentials missing") ? 400 : 500;
+    res.status(status).json({ success: false, error: message });
   }
 });
 
 router.get("/wigle/user/stats", async (req, res) => {
   try {
-    const { status, ok, text } = await wigleFetch("/profile/user");
+    const authHeader = getWigleAuthHeader(req);
+    const { status, ok, text } = await wigleFetch("/profile/user", authHeader);
     const data = parseOrError(text);
 
     if (!ok) {
@@ -124,7 +146,9 @@ router.get("/wigle/user/stats", async (req, res) => {
     res.json(data);
   } catch (err) {
     req.log.error({ err }, "WiGLE user stats error");
-    res.status(500).json({ success: false, error: "Internal server error" });
+    const message = err instanceof Error ? err.message : "Internal server error";
+    const status = message.startsWith("WiGLE credentials missing") ? 400 : 500;
+    res.status(status).json({ success: false, error: message });
   }
 });
 

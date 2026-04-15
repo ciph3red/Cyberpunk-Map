@@ -17,6 +17,7 @@ const DEFAULT_JSON_ACCEPT = "application/json, application/problem+json";
 
 let _baseUrl: string | null = null;
 let _authTokenGetter: AuthTokenGetter | null = null;
+let _extraHeaders: Headers | null = null;
 
 /**
  * Set a base URL that is prepended to every relative request URL
@@ -42,6 +43,28 @@ export function setBaseUrl(url: string | null): void {
  */
 export function setAuthTokenGetter(getter: AuthTokenGetter | null): void {
   _authTokenGetter = getter;
+}
+
+/**
+ * Register static headers that are attached to every request unless
+ * explicitly overridden by per-request options.
+ *
+ * Pass `null` to clear global headers.
+ */
+export function setExtraHeaders(headers: HeadersInit | null): void {
+  if (!headers) {
+    _extraHeaders = null;
+    return;
+  }
+
+  const next = new Headers();
+  new Headers(headers).forEach((value, key) => {
+    if (value.trim() !== "") {
+      next.set(key, value);
+    }
+  });
+
+  _extraHeaders = next;
 }
 
 function isRequest(input: RequestInfo | URL): input is Request {
@@ -356,6 +379,14 @@ export async function customFetch<T = unknown>(
     if (token) {
       headers.set("authorization", `Bearer ${token}`);
     }
+  }
+
+  if (_extraHeaders) {
+    _extraHeaders.forEach((value, key) => {
+      if (!headers.has(key)) {
+        headers.set(key, value);
+      }
+    });
   }
 
   const requestInfo = { method, url: resolveUrl(input) };
