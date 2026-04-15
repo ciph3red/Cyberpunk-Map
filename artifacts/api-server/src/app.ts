@@ -5,7 +5,7 @@ import router from "./routes";
 import { logger } from "./lib/logger";
 
 const app: Express = express();
-const requestBodyLimit = process.env.REQUEST_BODY_LIMIT ?? "25mb";
+const requestBodyLimit = process.env.REQUEST_BODY_LIMIT ?? "100mb";
 
 app.use(
   pinoHttp({
