@@ -94,11 +94,10 @@ export function WigleMap({ networks, onBoundsChange, targetCoords, onNetworkSele
 
   const signalIcon = useMemo(
     () =>
-      L.divIcon({
-        className: "signal-diamond-icon",
-        html: '<span class="signal-diamond-core"></span>',
-        iconSize: [14, 14],
-        iconAnchor: [7, 7],
+      L.icon({
+        iconUrl: "/rdmnd.png",
+        iconSize: [20, 20],
+        iconAnchor: [10, 10],
         popupAnchor: [0, -10],
       }),
     [],
