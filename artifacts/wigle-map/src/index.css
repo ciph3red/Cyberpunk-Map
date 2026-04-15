@@ -172,3 +172,18 @@
 .leaflet-control-attribution {
   filter: invert(100%) hue-rotate(180deg) brightness(95%) contrast(90%);
 }
+
+.signal-diamond-icon {
+  background: transparent;
+  border: 0;
+}
+
+.signal-diamond-core {
+  display: block;
+  width: 12px;
+  height: 12px;
+  transform: rotate(45deg);
+  background: #ff1a1a;
+  border: 1px solid #ff6b6b;
+  box-shadow: 0 0 8px rgba(255, 0, 0, 0.8);
+}
