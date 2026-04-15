@@ -112,6 +112,13 @@ paths:
           schema:
             type: number
           description: Radius variance from center point
+        - name: source
+          in: query
+          schema:
+            type: string
+            enum: [remote, local, both]
+            default: remote
+          description: Data source to query (remote=WiGLE API only, local=CSV imports only, both=combined)
       responses:
         "200":
           description: Search results
