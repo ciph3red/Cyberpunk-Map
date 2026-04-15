@@ -202,6 +202,7 @@ jobs:
             $SUDO cp -a "$SRC_DIR/." "$DEPLOY_DIR/"
 
             cd "$DEPLOY_DIR"
+            export NODE_ENV='production'
             export PORT='${{ secrets.BACKEND_PORT }}'
             if [ -z "$PORT" ]; then PORT=3000; fi
             export WIGLE_API_NAME='${{ secrets.WIGLE_API_NAME }}'
@@ -228,12 +229,10 @@ jobs:
               exit 1
             fi
 
-            if [ -f "ecosystem.config.cjs" ]; then
-              pm2 restart ecosystem.config.cjs --update-env
-            elif pm2 describe api-server >/dev/null 2>&1; then
+            if pm2 describe api-server >/dev/null 2>&1; then
               pm2 restart api-server --update-env
             else
-              pm2 start dist/index.mjs --name api-server --update-env
+              pm2 start /usr/bin/node --name api-server -- dist/index.mjs
             fi
 
             pm2 save
