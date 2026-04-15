@@ -95,6 +95,24 @@ function parseLimit(value: unknown): number {
   return Math.min(parsed, 100);
 }
 
+function resolveErrorMessage(err: unknown): string {
+  if (err instanceof Error && err.message.trim()) {
+    return err.message;
+  }
+
+  if (
+    typeof err === "object" &&
+    err !== null &&
+    "code" in err &&
+    typeof (err as { code?: unknown }).code === "string"
+  ) {
+    const code = (err as { code: string }).code;
+    return `Database operation failed (${code}).`;
+  }
+
+  return "Internal server error";
+}
+
 async function getPool(): Promise<PgPoolLike> {
   try {
     const dbModule = await import("@workspace/db");
@@ -182,7 +200,7 @@ router.post("/csv/imports", async (req, res) => {
     });
   } catch (err) {
     req.log.error({ err }, "CSV import persistence failed");
-    const message = err instanceof Error ? err.message : "Internal server error";
+    const message = resolveErrorMessage(err);
     const status = message.startsWith("Database is not configured") ? 500 : 500;
     res.status(status).json({ success: false, error: message });
   }
@@ -215,7 +233,7 @@ router.get("/csv/imports", async (req, res) => {
     });
   } catch (err) {
     req.log.error({ err }, "CSV imports listing failed");
-    const message = err instanceof Error ? err.message : "Internal server error";
+    const message = resolveErrorMessage(err);
     res.status(500).json({ success: false, error: message });
   }
 });
@@ -258,7 +276,7 @@ router.get("/csv/imports/:importId", async (req, res) => {
     });
   } catch (err) {
     req.log.error({ err }, "CSV import fetch failed");
-    const message = err instanceof Error ? err.message : "Internal server error";
+    const message = resolveErrorMessage(err);
     res.status(500).json({ success: false, error: message });
   }
 });
@@ -281,7 +299,7 @@ router.delete("/csv/imports/:importId", async (req, res) => {
     res.json({ success: true, importId });
   } catch (err) {
     req.log.error({ err }, "CSV import delete failed");
-    const message = err instanceof Error ? err.message : "Internal server error";
+    const message = resolveErrorMessage(err);
     res.status(500).json({ success: false, error: message });
   }
 });
