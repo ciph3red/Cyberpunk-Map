@@ -5,6 +5,7 @@ import router from "./routes";
 import { logger } from "./lib/logger";
 
 const app: Express = express();
+const requestBodyLimit = process.env.REQUEST_BODY_LIMIT ?? "25mb";
 
 app.use(
   pinoHttp({
@@ -26,9 +27,26 @@ app.use(
   }),
 );
 app.use(cors());
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: requestBodyLimit }));
+app.use(express.urlencoded({ extended: true, limit: requestBodyLimit }));
 
 app.use("/api", router);
+
+app.use((err: unknown, _req: express.Request, res: express.Response, next: express.NextFunction) => {
+  if (
+    typeof err === "object" &&
+    err !== null &&
+    "type" in err &&
+    (err as { type?: unknown }).type === "entity.too.large"
+  ) {
+    res.status(413).json({
+      success: false,
+      error: `Request payload too large. Reduce CSV size or set REQUEST_BODY_LIMIT (current: ${requestBodyLimit}).`,
+    });
+    return;
+  }
+
+  next(err);
+});
 
 export default app;

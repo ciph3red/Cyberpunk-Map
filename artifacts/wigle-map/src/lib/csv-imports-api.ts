@@ -34,6 +34,14 @@ function buildErrorMessage(status: number, fallbackMessage: string, body: unknow
   return `[${status}] ${fallbackMessage}`;
 }
 
+function getFallbackSaveError(status: number): string {
+  if (status === 413) {
+    return "CSV payload too large to persist. Try a smaller import or increase server request limit.";
+  }
+
+  return "Failed to persist CSV import";
+}
+
 export async function saveCsvImportToServer(
   fileName: string,
   networks: WiFiNetwork[],
@@ -54,7 +62,7 @@ export async function saveCsvImportToServer(
   }
 
   if (!response.ok) {
-    throw new Error(buildErrorMessage(response.status, "Failed to persist CSV import", body));
+    throw new Error(buildErrorMessage(response.status, getFallbackSaveError(response.status), body));
   }
 
   return body as SaveCsvImportResponse;
