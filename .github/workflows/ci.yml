@@ -211,6 +211,11 @@ jobs:
             if [ -z "$PORT" ]; then PORT=3000; fi
             export WIGLE_API_NAME='${{ secrets.WIGLE_API_NAME }}'
             export WIGLE_API_TOKEN='${{ secrets.WIGLE_API_TOKEN }}'
+            export DATABASE_URL='${{ secrets.BACKEND_DATABASE_URL }}'
+
+            if [ -z "$DATABASE_URL" ]; then
+              echo "Warning: BACKEND_DATABASE_URL is not set. CSV server-side persistence endpoints will fail until DATABASE_URL is configured."
+            fi
 
             if ! command -v pm2 >/dev/null 2>&1; then
               if command -v npm >/dev/null 2>&1; then

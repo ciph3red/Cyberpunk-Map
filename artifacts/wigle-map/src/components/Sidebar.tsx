@@ -12,6 +12,7 @@ import {
   saveUserApiSettings,
   UserApiSettings,
 } from "@/lib/user-api-settings";
+import { saveCsvImportToServer } from "@/lib/csv-imports-api";
 
 interface SidebarProps {
   onSearch: (params: any) => void;
@@ -64,6 +65,7 @@ export function Sidebar({
   const [centerLng, setCenterLng] = useState("");
   const [variance, setVariance] = useState("");
   const [importError, setImportError] = useState<string | null>(null);
+  const [importNotice, setImportNotice] = useState<string | null>(null);
   const [isImporting, setIsImporting] = useState(false);
   const [apiSettings, setApiSettings] = useState<UserApiSettings>(() =>
     loadUserApiSettings(),
@@ -116,6 +118,7 @@ export function Sidebar({
 
     setIsImporting(true);
     setImportError(null);
+    setImportNotice(null);
 
     try {
       const text = await file.text();
@@ -127,6 +130,19 @@ export function Sidebar({
       }
 
       onImportNetworks(networks, file.name);
+
+      try {
+        const persisted = await saveCsvImportToServer(file.name, networks);
+        setImportNotice(
+          `Saved to server database (${persisted.networkCount} signals, ID: ${persisted.importId.slice(0, 8)}).`,
+        );
+      } catch (persistErr) {
+        const message =
+          persistErr instanceof Error
+            ? persistErr.message
+            : "Failed to save import on server.";
+        setImportError(`Imported locally, but server save failed: ${message}`);
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : "Failed to read CSV file.";
       setImportError(message);
@@ -356,6 +372,12 @@ export function Sidebar({
             {importError && (
               <div className="text-xs text-red-400 border border-red-500/40 bg-red-900/10 px-2 py-1">
                 {importError}
+              </div>
+            )}
+
+            {importNotice && (
+              <div className="text-xs text-accent border border-accent/40 bg-accent/10 px-2 py-1">
+                {importNotice}
               </div>
             )}
           </div>

@@ -76,11 +76,12 @@ export function applyUserApiSettings(
   settings: UserApiSettings,
   fallbackDatabaseApiUrl: string | null,
 ): void {
-  const databaseApiUrl = normalizeUrl(settings.databaseApiUrl);
-  const fallback = normalizeUrl(fallbackDatabaseApiUrl ?? "");
-  const effectiveBaseUrl = databaseApiUrl || fallback || null;
+  const effectiveBaseUrl = resolveDatabaseApiBaseUrl(
+    settings,
+    fallbackDatabaseApiUrl,
+  );
 
-  setBaseUrl(effectiveBaseUrl);
+  setBaseUrl(effectiveBaseUrl || null);
 
   const wigleApiName = normalizeText(settings.wigleApiName);
   const wigleApiToken = normalizeText(settings.wigleApiToken);
@@ -94,4 +95,13 @@ export function applyUserApiSettings(
   }
 
   setExtraHeaders(null);
+}
+
+export function resolveDatabaseApiBaseUrl(
+  settings: UserApiSettings,
+  fallbackDatabaseApiUrl: string | null,
+): string {
+  const databaseApiUrl = normalizeUrl(settings.databaseApiUrl);
+  const fallback = normalizeUrl(fallbackDatabaseApiUrl ?? "");
+  return databaseApiUrl || fallback || "";
 }
