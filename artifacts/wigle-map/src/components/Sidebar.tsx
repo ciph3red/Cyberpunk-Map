@@ -5,6 +5,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { WiFiNetwork } from "@workspace/api-client-react";
 import { Badge } from "@/components/ui/badge";
+import { parseWigleCsvToNetworks } from "@/lib/parse-wigle-csv";
 
 interface SidebarProps {
   onSearch: (params: any) => void;
@@ -13,6 +14,11 @@ interface SidebarProps {
   totalResults: number;
   onSelectResult: (net: WiFiNetwork) => void;
   isLoading: boolean;
+  onImportNetworks: (networks: WiFiNetwork[], fileName: string) => void;
+  onClearImported: () => void;
+  importedFileName: string | null;
+  importedCount: number;
+  isImportedMode: boolean;
 }
 
 const CELL_TYPES = ["GSM", "UMTS", "LTE", "CDMA", "WCDMA", "NR"];
@@ -28,7 +34,19 @@ function typeBadgeLabel(net: WiFiNetwork) {
   return net.encryption || "UNK";
 }
 
-export function Sidebar({ onSearch, onScanArea, results, totalResults, onSelectResult, isLoading }: SidebarProps) {
+export function Sidebar({
+  onSearch,
+  onScanArea,
+  results,
+  totalResults,
+  onSelectResult,
+  isLoading,
+  onImportNetworks,
+  onClearImported,
+  importedFileName,
+  importedCount,
+  isImportedMode,
+}: SidebarProps) {
   const [ssid, setSsid] = useState("");
   const [netid, setNetid] = useState("");
   const [netType, setNetType] = useState("any");
@@ -37,6 +55,8 @@ export function Sidebar({ onSearch, onScanArea, results, totalResults, onSelectR
   const [centerLat, setCenterLat] = useState("");
   const [centerLng, setCenterLng] = useState("");
   const [variance, setVariance] = useState("");
+  const [importError, setImportError] = useState<string | null>(null);
+  const [isImporting, setIsImporting] = useState(false);
 
   const isWifi = netType === "any" || netType === "WiFi";
   const isBluetooth = netType === "BT" || netType === "BLE";
@@ -76,6 +96,32 @@ export function Sidebar({ onSearch, onScanArea, results, totalResults, onSelectR
     setCenterLng("");
     setVariance("");
     onSearch({});
+  };
+
+  const handleCsvImport = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setIsImporting(true);
+    setImportError(null);
+
+    try {
+      const text = await file.text();
+      const networks = parseWigleCsvToNetworks(text);
+
+      if (networks.length === 0) {
+        setImportError("CSV parsed but no valid coordinates were found.");
+        return;
+      }
+
+      onImportNetworks(networks, file.name);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to read CSV file.";
+      setImportError(message);
+    } finally {
+      setIsImporting(false);
+      event.target.value = "";
+    }
   };
 
   return (
@@ -228,6 +274,43 @@ export function Sidebar({ onSearch, onScanArea, results, totalResults, onSelectR
           >
             Reset Filters
           </Button>
+
+          <div className="pt-2 mt-2 border-t border-primary/30 space-y-2">
+            <label className="text-xs uppercase text-primary/70">Import CSV</label>
+            <Input
+              type="file"
+              accept=".csv,text/csv"
+              onChange={handleCsvImport}
+              disabled={isImporting}
+              className="bg-black border-primary rounded-none focus-visible:ring-0 focus-visible:border-accent font-mono text-xs"
+            />
+
+            <div className="text-[11px] text-primary/60 uppercase leading-relaxed">
+              TEMPLATE: [BSSID],[SSID],[Capabilities],[First timestamp seen],[Channel],[Frequency],[RSSI],[Latitude],[Longitude],[Altitude],[Accuracy],[RCOIs],[MfgrId],[Type]
+            </div>
+
+            {isImportedMode && (
+              <div className="flex items-center justify-between gap-2 border border-accent/40 bg-accent/10 px-2 py-1 text-xs uppercase">
+                <span className="text-accent truncate">
+                  CSV: {importedFileName || "import.csv"} ({importedCount})
+                </span>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  onClick={onClearImported}
+                  className="h-6 px-2 rounded-none text-primary hover:text-accent hover:bg-black"
+                >
+                  Use API
+                </Button>
+              </div>
+            )}
+
+            {importError && (
+              <div className="text-xs text-red-400 border border-red-500/40 bg-red-900/10 px-2 py-1">
+                {importError}
+              </div>
+            )}
+          </div>
         </form>
 
         {/* Results list */}

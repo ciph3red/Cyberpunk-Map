@@ -30,15 +30,24 @@ export default function Home() {
   });
 
   const [targetCoords, setTargetCoords] = useState<[number, number] | null>(null);
+  const [importedNetworks, setImportedNetworks] = useState<WiFiNetwork[] | null>(null);
+  const [importedFileName, setImportedFileName] = useState<string | null>(null);
+
+  const isImportedMode = importedNetworks !== null;
 
   const { data, isLoading, isError, error } = useSearchNetworks(searchParams, {
     query: {
-      enabled: true,
+      enabled: !isImportedMode,
       queryKey: getSearchNetworksQueryKey(searchParams),
     },
   });
 
+  const activeNetworks = importedNetworks ?? data?.results ?? [];
+  const activeTotalResults = importedNetworks ? importedNetworks.length : (data?.totalResults || 0);
+
   const handleSearch = (params: Partial<SearchNetworksParams>) => {
+    setImportedNetworks(null);
+    setImportedFileName(null);
     setSearchParams(prev => ({ ...prev, ...params }));
   };
 
@@ -47,7 +56,22 @@ export default function Home() {
   };
 
   const handleScanArea = () => {
+    setImportedNetworks(null);
+    setImportedFileName(null);
     setSearchParams(prev => ({ ...prev, ...bounds }));
+  };
+
+  const handleImportNetworks = (networks: WiFiNetwork[], fileName: string) => {
+    setImportedNetworks(networks);
+    setImportedFileName(fileName);
+    if (networks.length > 0) {
+      setTargetCoords([networks[0].trilat, networks[0].trilong]);
+    }
+  };
+
+  const handleClearImported = () => {
+    setImportedNetworks(null);
+    setImportedFileName(null);
   };
 
   return (
@@ -55,14 +79,14 @@ export default function Home() {
       {/* Main Map Area */}
       <div className="flex-1 relative">
         <WigleMap 
-          networks={data?.results || []}
+          networks={activeNetworks}
           onBoundsChange={handleBoundsChange}
           targetCoords={targetCoords}
           onNetworkSelect={(net) => setTargetCoords([net.trilat, net.trilong])}
         />
         
         {/* Loading Overlay */}
-        {isLoading && (
+        {!isImportedMode && isLoading && (
           <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-[1000] bg-black/80 p-4 border border-primary cyber-glow flicker text-xl flex items-center gap-2">
             <span>[</span>
             <span className="text-accent animate-pulse">SCANNING</span>
@@ -71,8 +95,14 @@ export default function Home() {
           </div>
         )}
 
+        {isImportedMode && (
+          <div className="absolute top-4 left-4 z-[1000] bg-black/90 px-4 py-2 border border-accent text-accent font-bold text-xs max-w-md">
+            CSV MODE ACTIVE: {importedFileName || "import.csv"} ({activeTotalResults} points)
+          </div>
+        )}
+
         {/* Error Overlay */}
-        {isError && (
+        {!isImportedMode && isError && (
           <div className="absolute top-4 left-1/2 -translate-x-1/2 z-[1000] bg-black/90 px-5 py-3 border border-red-500 text-red-400 flex items-center gap-2 font-bold text-sm max-w-xl text-center" style={{boxShadow:"0 0 12px #ff000080"}}>
             {getErrorMessage(error)}
           </div>
@@ -84,10 +114,15 @@ export default function Home() {
         <Sidebar 
           onSearch={handleSearch} 
           onScanArea={handleScanArea}
-          results={data?.results || []}
-          totalResults={data?.totalResults || 0}
+          results={activeNetworks}
+          totalResults={activeTotalResults}
           onSelectResult={(net) => setTargetCoords([net.trilat, net.trilong])}
-          isLoading={isLoading}
+          isLoading={!isImportedMode && isLoading}
+          onImportNetworks={handleImportNetworks}
+          onClearImported={handleClearImported}
+          importedFileName={importedFileName}
+          importedCount={importedNetworks?.length || 0}
+          isImportedMode={isImportedMode}
         />
       </div>
 
