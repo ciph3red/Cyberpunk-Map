@@ -18,6 +18,7 @@ interface MapViewport {
   north: number;
   west: number;
   east: number;
+  zoom: number;
 }
 
 interface MapEventsProps {
@@ -37,6 +38,7 @@ function MapEvents({ onBoundsChange, onViewportChange }: MapEventsProps) {
       north: clampLat(bounds.getNorth()),
       west: clampLng(bounds.getWest()),
       east: clampLng(bounds.getEast()),
+      zoom: map.getZoom(),
     });
 
     onBoundsChange({
@@ -103,9 +105,12 @@ export function WigleMap({ networks, onBoundsChange, targetCoords, onNetworkSele
     [],
   );
 
-  const visibleNetworks = useMemo(() => {
+  const groupedData = useMemo(() => {
     if (!viewport) {
-      return networks.slice(0, MAX_RENDERED_MARKERS);
+      return { 
+        markers: networks.slice(0, MAX_RENDERED_MARKERS), 
+        clusters: [] as { lat: number; lng: number; count: number }[] 
+      };
     }
 
     const inView = networks.filter((net) => {
@@ -117,15 +122,52 @@ export function WigleMap({ networks, onBoundsChange, targetCoords, onNetworkSele
       );
     });
 
-    if (inView.length <= MAX_RENDERED_MARKERS) {
-      return inView;
+    // If zoomed in close enough, render individual markers directly
+    if (viewport.zoom >= 16) {
+      if (inView.length <= MAX_RENDERED_MARKERS) {
+        return { markers: inView, clusters: [] };
+      }
+      const step = Math.ceil(inView.length / MAX_RENDERED_MARKERS);
+      return { markers: inView.filter((_, index) => index % step === 0), clusters: [] };
     }
 
-    const step = Math.ceil(inView.length / MAX_RENDERED_MARKERS);
-    return inView.filter((_, index) => index % step === 0);
+    // Grid-based clustering for zoomed out views to avoid lag
+    // Grid size scales with zoom level. Lower zoom level = larger grid radius
+    const R = viewport.zoom <= 12 ? 0.05 : viewport.zoom <= 14 ? 0.01 : 0.005;
+    
+    const grid = new Map<string, { lat: number; lng: number; count: number }>();
+    let totalCount = 0;
+    
+    inView.forEach(net => {
+      const gridLat = Math.round(net.trilat / R) * R;
+      const gridLng = Math.round(net.trilong / R) * R;
+      const key = `${gridLat.toFixed(4)},${gridLng.toFixed(4)}`;
+      const existing = grid.get(key);
+      if (!existing) {
+        grid.set(key, { lat: gridLat, lng: gridLng, count: 1 });
+      } else {
+        existing.count++;
+      }
+      totalCount++;
+    });
+
+    const clusters = Array.from(grid.values());
+
+    return { markers: [], clusters };
   }, [networks, viewport]);
 
-  const droppedCount = Math.max(0, networks.length - visibleNetworks.length);
+  const createClusterIcon = (count: number) => {
+    return L.divIcon({
+      className: "bg-transparent border-0",
+      html: `<div class="flex items-center justify-center w-8 h-8 bg-[#050a0e]/80 border border-[#00ffff] rounded-full text-[#00ffff] font-mono text-[10px] shadow-[0_0_8px_#00ffff]">
+        ${count > 999 ? '999+' : count}
+      </div>`,
+      iconSize: [32, 32],
+      iconAnchor: [16, 16],
+    });
+  };
+
+  const droppedCount = Math.max(0, networks.length - groupedData.markers.length - groupedData.clusters.reduce((acc, c) => acc + c.count, 0));
 
   return (
     <div className="w-full h-full relative z-0">
@@ -147,7 +189,15 @@ export function WigleMap({ networks, onBoundsChange, targetCoords, onNetworkSele
         <MapEvents onBoundsChange={onBoundsChange} onViewportChange={setViewport} />
         <MapFlyTo target={targetCoords} />
         
-        {visibleNetworks.map((net, index) => (
+        {groupedData.clusters.map((cluster, index) => (
+          <Marker
+            key={`cluster-${cluster.lat}-${cluster.lng}-${index}`}
+            position={[cluster.lat, cluster.lng]}
+            icon={createClusterIcon(cluster.count)}
+          />
+        ))}
+
+        {groupedData.markers.map((net, index) => (
           <Marker
             key={`${net.netid}-${index}`}
             position={[net.trilat, net.trilong]}
@@ -171,7 +221,7 @@ export function WigleMap({ networks, onBoundsChange, targetCoords, onNetworkSele
 
       {droppedCount > 0 && (
         <div className="absolute top-4 right-4 z-[1000] bg-black/80 border border-red-500 text-red-400 px-3 py-1 text-xs font-mono uppercase">
-          Rendering {visibleNetworks.length.toLocaleString()} of {networks.length.toLocaleString()} signals
+          {viewport && viewport.zoom < 16 ? `Clustering ${networks.length.toLocaleString()} signals` : `Rendering ${groupedData.markers.length.toLocaleString()} of ${networks.length.toLocaleString()} signals`}
         </div>
       )}
     </div>
