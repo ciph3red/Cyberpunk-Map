@@ -84,6 +84,22 @@ router.get("/wigle/search", async (req, res) => {
     if (latrange2) params.latrange2 = latrange2;
     if (longrange1) params.longrange1 = longrange1;
     if (longrange2) params.longrange2 = longrange2;
+
+    if (latrange1 && latrange2 && longrange1 && longrange2) {
+      const latDiff = Math.abs(parseFloat(latrange2) - parseFloat(latrange1));
+      const longDiff = Math.abs(parseFloat(longrange2) - parseFloat(longrange1));
+      const hasSpecifics = ssid || ssidlike || netid;
+      
+      // WiGLE aggressively errors on large bounds scans without specific identifiers.
+      const maxDelta = hasSpecifics ? 2.5 : 0.5;
+      if (latDiff > maxDelta || longDiff > maxDelta) {
+        res.status(400).json({
+          success: false,
+          error: `Search area too large. Please zoom in tighter (max ${maxDelta}° delta) or enter a specific SSID.`,
+        });
+        return;
+      }
+    }
     if (lastupdt) params.lastupdt = lastupdt;
     if (resultsPerPage) params.resultsPerPage = resultsPerPage;
     if (searchAfter) params.searchAfter = searchAfter;

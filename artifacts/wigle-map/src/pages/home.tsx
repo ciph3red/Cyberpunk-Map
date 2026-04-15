@@ -8,9 +8,9 @@ import { useQueryClient } from "@tanstack/react-query";
 function getErrorMessage(error: unknown): string {
   const status = (error as any)?.status as number | undefined;
   const message = (error as any)?.message as string | undefined;
-  const dataMsg = (error as any)?.data?.message as string | undefined;
-  if (status === 429) return "[ERR 429] RATE_LIMIT_EXCEEDED — WiGLE daily query quota hit. Try again tomorrow.";
-  if (status === 401 || status === 403) return `[ERR ${status}] AUTH_FAILED — Check your API credentials.`;
+  const dataMsg = ((error as any)?.data?.message || (error as any)?.data?.error) as string | undefined;
+  if (status === 429) return "[ERR 429] RATE_LIMIT_EXCEEDED â€” WiGLE daily query quota hit. Try again tomorrow.";
+  if (status === 401 || status === 403) return `[ERR ${status}] AUTH_FAILED â€” Check your API credentials.`;
   if (status === 400) return `[ERR 400] BAD_REQUEST — ${dataMsg || "Invalid search parameters."}`;
   if (status) return `[ERR ${status}] ${message ?? "Request failed."}`;
   if (error instanceof Error) return `[ERR] ${error.message}`;
