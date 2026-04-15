@@ -57,6 +57,7 @@ jobs:
 
           mkdir -p ~/.ssh
           KEY_FILE="$HOME/.ssh/frontend_deploy_key"
+          REMOTE_STAGE_DIR="/tmp/frontend-stage"
 
           if printf '%s' "$FRONTEND_KEY" | grep -q "BEGIN .* PRIVATE KEY"; then
             printf '%s\n' "$FRONTEND_KEY" > "$KEY_FILE"
@@ -73,9 +74,18 @@ jobs:
           chmod 600 "$KEY_FILE"
           ssh-keyscan -p 8123 "$FRONTEND_HOST" >> ~/.ssh/known_hosts 2>/dev/null || true
 
+          if [ ! -f artifacts/wigle-map/dist/public/index.html ]; then
+            echo "Frontend build output missing: artifacts/wigle-map/dist/public/index.html"
+            exit 1
+          fi
+
+          ssh -p 8123 -i "$KEY_FILE" -o StrictHostKeyChecking=accept-new \
+            "$FRONTEND_USER@$FRONTEND_HOST" \
+            "rm -rf '$REMOTE_STAGE_DIR' && mkdir -p '$REMOTE_STAGE_DIR'"
+
           scp -P 8123 -i "$KEY_FILE" -o StrictHostKeyChecking=accept-new -r \
-            artifacts/wigle-map/dist/public/* \
-            "$FRONTEND_USER@$FRONTEND_HOST:~/frontend-stage/"
+            artifacts/wigle-map/dist/public/. \
+            "$FRONTEND_USER@$FRONTEND_HOST:$REMOTE_STAGE_DIR/"
 
       - name: Promote frontend files
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
@@ -87,8 +97,7 @@ jobs:
           key: ${{ secrets.FRONTEND_KEY }}
           script: |
             set -e
-            DEPLOY_DIR="${{ secrets.FRONTEND_DEPLOY_DIR }}"
-            if [ -z "$DEPLOY_DIR" ]; then DEPLOY_DIR="/var/www/frontend"; fi
+            DEPLOY_DIR="/var/www/html"
 
             SUDO=""
             if [ ! -w "$DEPLOY_DIR" ] && [ ! -w "$(dirname "$DEPLOY_DIR")" ]; then
@@ -100,7 +109,7 @@ jobs:
               fi
             fi
 
-            SRC_DIR="$HOME/frontend-stage"
+            SRC_DIR="/tmp/frontend-stage"
             if [ ! -d "$SRC_DIR" ]; then
               echo "Uploaded frontend files not found at $SRC_DIR"
               exit 1
