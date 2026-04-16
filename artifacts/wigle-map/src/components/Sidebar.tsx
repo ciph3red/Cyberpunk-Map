@@ -72,15 +72,48 @@ function estimateTriangulatedLocation(samples: TriangulationSample[]): [number, 
   const totalWeight = points.reduce((sum, point) => sum + point.weight, 0);
   if (!Number.isFinite(totalWeight) || totalWeight <= 0) return null;
 
-  let x = points.reduce((sum, point) => sum + point.x * point.weight, 0) / totalWeight;
-  let y = points.reduce((sum, point) => sum + point.y * point.weight, 0) / totalWeight;
+  const fallbackX = points.reduce((sum, point) => sum + point.x * point.weight, 0) / totalWeight;
+  const fallbackY = points.reduce((sum, point) => sum + point.y * point.weight, 0) / totalWeight;
 
-  for (let i = 0; i < 30; i++) {
-    let jtj00 = 0;
-    let jtj01 = 0;
-    let jtj11 = 0;
-    let jtr0 = 0;
-    let jtr1 = 0;
+  // Closed-form weighted least-squares initialization works reliably for 4+ APs.
+  const base = points[0];
+  let jtj00 = 0;
+  let jtj01 = 0;
+  let jtj11 = 0;
+  let jtb0 = 0;
+  let jtb1 = 0;
+
+  for (let i = 1; i < points.length; i++) {
+    const point = points[i];
+    const ax = 2 * (point.x - base.x);
+    const ay = 2 * (point.y - base.y);
+    const b =
+      (point.x * point.x + point.y * point.y - point.distance * point.distance) -
+      (base.x * base.x + base.y * base.y - base.distance * base.distance);
+
+    const weight = (point.weight + base.weight) / 2;
+    jtj00 += weight * ax * ax;
+    jtj01 += weight * ax * ay;
+    jtj11 += weight * ay * ay;
+    jtb0 += weight * ax * b;
+    jtb1 += weight * ay * b;
+  }
+
+  const det = jtj00 * jtj11 - jtj01 * jtj01;
+  let x = fallbackX;
+  let y = fallbackY;
+
+  if (Number.isFinite(det) && Math.abs(det) > 1e-9) {
+    x = (jtj11 * jtb0 - jtj01 * jtb1) / det;
+    y = (-jtj01 * jtb0 + jtj00 * jtb1) / det;
+  }
+
+  for (let i = 0; i < 8; i++) {
+    let h00 = 0;
+    let h01 = 0;
+    let h11 = 0;
+    let g0 = 0;
+    let g1 = 0;
 
     for (const point of points) {
       const dx = x - point.x;
@@ -90,26 +123,37 @@ function estimateTriangulatedLocation(samples: TriangulationSample[]): [number, 
       const jx = dx / range;
       const jy = dy / range;
 
-      jtj00 += point.weight * jx * jx;
-      jtj01 += point.weight * jx * jy;
-      jtj11 += point.weight * jy * jy;
-      jtr0 += point.weight * jx * residual;
-      jtr1 += point.weight * jy * residual;
+      h00 += point.weight * jx * jx;
+      h01 += point.weight * jx * jy;
+      h11 += point.weight * jy * jy;
+      g0 += point.weight * jx * residual;
+      g1 += point.weight * jy * residual;
     }
 
-    const det = jtj00 * jtj11 - jtj01 * jtj01;
-    if (!Number.isFinite(det) || Math.abs(det) < 1e-9) break;
+    const hDet = h00 * h11 - h01 * h01;
+    if (!Number.isFinite(hDet) || Math.abs(hDet) < 1e-9) break;
 
-    const stepX = (jtj11 * jtr0 - jtj01 * jtr1) / det;
-    const stepY = (-jtj01 * jtr0 + jtj00 * jtr1) / det;
+    const stepX = (h11 * g0 - h01 * g1) / hDet;
+    const stepY = (-h01 * g0 + h00 * g1) / hDet;
 
     x -= stepX;
     y -= stepY;
 
-    if (Math.hypot(stepX, stepY) < 0.1) {
-      break;
-    }
+    if (Math.hypot(stepX, stepY) < 0.05) break;
   }
+
+  if (!Number.isFinite(x) || !Number.isFinite(y)) {
+    x = fallbackX;
+    y = fallbackY;
+  }
+
+  const minX = Math.min(...points.map((point) => point.x));
+  const maxX = Math.max(...points.map((point) => point.x));
+  const minY = Math.min(...points.map((point) => point.y));
+  const maxY = Math.max(...points.map((point) => point.y));
+
+  x = Math.max(minX, Math.min(maxX, x));
+  y = Math.max(minY, Math.min(maxY, y));
 
   const estimatedLat = lat0 + y / metersPerDegLat;
   const estimatedLng = lng0 + x / metersPerDegLng;
