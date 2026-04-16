@@ -41,6 +41,7 @@ export default function Home() {
   const [targetCoords, setTargetCoords] = useState<[number, number] | null>(null);
   const [importedNetworks, setImportedNetworks] = useState<WiFiNetwork[] | null>(null);
   const [importedFileName, setImportedFileName] = useState<string | null>(null);
+  const [triangulationNetworks, setTriangulationNetworks] = useState<WiFiNetwork[]>([]);
   const lastAuthFallbackKey = useRef<string | null>(null);
 
   const isImportedMode = importedNetworks !== null;
@@ -93,6 +94,7 @@ export default function Home() {
   const handleSearch = (params: Partial<SearchNetworksParams>) => {
     setImportedNetworks(null);
     setImportedFileName(null);
+    setTriangulationNetworks([]);
     setSearchParams(prev => ({ ...prev, ...params }));
   };
 
@@ -103,12 +105,14 @@ export default function Home() {
   const handleScanArea = () => {
     setImportedNetworks(null);
     setImportedFileName(null);
+    setTriangulationNetworks([]);
     setSearchParams(prev => ({ ...prev, ...bounds }));
   };
 
   const handleImportNetworks = (networks: WiFiNetwork[], fileName: string) => {
     setImportedNetworks(networks);
     setImportedFileName(fileName);
+    setTriangulationNetworks([]);
     if (networks.length > 0) {
       setTargetCoords([networks[0].trilat, networks[0].trilong]);
     }
@@ -117,11 +121,13 @@ export default function Home() {
   const handleClearImported = () => {
     setImportedNetworks(null);
     setImportedFileName(null);
+    setTriangulationNetworks([]);
   };
 
   const handleApiSettingsChanged = () => {
     setImportedNetworks(null);
     setImportedFileName(null);
+    setTriangulationNetworks([]);
     void queryClient.invalidateQueries();
   };
 
@@ -131,6 +137,7 @@ export default function Home() {
       <div className="flex-1 relative">
         <WigleMap 
           networks={activeNetworks}
+          triangulationNetworks={triangulationNetworks}
           onBoundsChange={handleBoundsChange}
           targetCoords={targetCoords}
           onNetworkSelect={(net) => setTargetCoords([net.trilat, net.trilong])}
@@ -175,6 +182,7 @@ export default function Home() {
           importedCount={importedNetworks?.length || 0}
           isImportedMode={isImportedMode}
           onApiSettingsChanged={handleApiSettingsChanged}
+          onSetTriangulationNetworks={setTriangulationNetworks}
         />
       </div>
 

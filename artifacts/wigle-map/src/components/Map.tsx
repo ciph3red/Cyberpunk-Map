@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   MapContainer,
   TileLayer,
   Marker,
   Popup,
+  Polygon,
   useMap,
   useMapEvents,
 } from "react-leaflet";
@@ -13,6 +14,8 @@ import { WiFiNetwork } from "@workspace/api-client-react";
 import { MAX_MARKERS_PER_CLUSTER } from "@/lib/import-limits";
 
 const CLUSTER_ZOOM_THRESHOLD = 16;
+const TRIANGULATION_PATTERN_ID = "triangulation-stripe-fill";
+const TRIANGULATION_COLOR = "#ff5a1f";
 
 interface MapViewport {
   south: number;
@@ -67,6 +70,110 @@ interface MapFlyToProps {
   target: [number, number] | null;
 }
 
+function ensureTriangulationPattern(svg: SVGSVGElement): void {
+  if (svg.querySelector(`#${TRIANGULATION_PATTERN_ID}`)) {
+    return;
+  }
+
+  const ns = "http://www.w3.org/2000/svg";
+  let defs = svg.querySelector("defs");
+
+  if (!defs) {
+    defs = document.createElementNS(ns, "defs");
+    svg.prepend(defs);
+  }
+
+  const pattern = document.createElementNS(ns, "pattern");
+  pattern.setAttribute("id", TRIANGULATION_PATTERN_ID);
+  pattern.setAttribute("patternUnits", "userSpaceOnUse");
+  pattern.setAttribute("width", "12");
+  pattern.setAttribute("height", "12");
+  pattern.setAttribute("patternTransform", "rotate(45)");
+
+  const background = document.createElementNS(ns, "rect");
+  background.setAttribute("x", "0");
+  background.setAttribute("y", "0");
+  background.setAttribute("width", "12");
+  background.setAttribute("height", "12");
+  background.setAttribute("fill", "#000000");
+
+  const stripe = document.createElementNS(ns, "rect");
+  stripe.setAttribute("x", "0");
+  stripe.setAttribute("y", "0");
+  stripe.setAttribute("width", "6");
+  stripe.setAttribute("height", "12");
+  stripe.setAttribute("fill", TRIANGULATION_COLOR);
+
+  pattern.append(background, stripe);
+  defs.append(pattern);
+}
+
+interface TriangulationOverlayProps {
+  networks: WiFiNetwork[];
+}
+
+function TriangulationOverlay({ networks }: TriangulationOverlayProps) {
+  const map = useMap();
+  const polygonRef = useRef<L.Polygon | null>(null);
+
+  const points = useMemo(
+    () => {
+      const raw = networks
+        .filter((net) => Number.isFinite(net.trilat) && Number.isFinite(net.trilong))
+        .map((net) => [net.trilat, net.trilong] as [number, number]);
+
+      if (raw.length < 3) return raw;
+
+      const center = raw.reduce(
+        (acc, point) => {
+          acc.lat += point[0];
+          acc.lng += point[1];
+          return acc;
+        },
+        { lat: 0, lng: 0 },
+      );
+
+      center.lat /= raw.length;
+      center.lng /= raw.length;
+
+      return raw.slice().sort((a, b) => {
+        const angleA = Math.atan2(a[0] - center.lat, a[1] - center.lng);
+        const angleB = Math.atan2(b[0] - center.lat, b[1] - center.lng);
+        return angleA - angleB;
+      });
+    },
+    [networks],
+  );
+
+  useEffect(() => {
+    if (points.length < 3) return;
+
+    const svg = map.getPanes().overlayPane.querySelector("svg") as SVGSVGElement | null;
+    const element = polygonRef.current?.getElement() as SVGPathElement | null;
+    if (!svg || !element) return;
+
+    ensureTriangulationPattern(svg);
+    element.setAttribute("fill", `url(#${TRIANGULATION_PATTERN_ID})`);
+    element.setAttribute("fill-opacity", "0.3");
+    element.setAttribute("stroke", TRIANGULATION_COLOR);
+  }, [map, points]);
+
+  if (points.length < 3) return null;
+
+  return (
+    <Polygon
+      ref={polygonRef}
+      positions={points}
+      pathOptions={{
+        color: TRIANGULATION_COLOR,
+        weight: 2,
+        opacity: 1,
+        fillOpacity: 0.3,
+      }}
+    />
+  );
+}
+
 function MapFlyTo({ target }: MapFlyToProps) {
   const map = useMap();
   useEffect(() => {
@@ -79,6 +186,7 @@ function MapFlyTo({ target }: MapFlyToProps) {
 
 export interface WigleMapProps {
   networks: WiFiNetwork[];
+  triangulationNetworks?: WiFiNetwork[];
   onBoundsChange: (bounds: { latrange1: number; latrange2: number; longrange1: number; longrange2: number }) => void;
   targetCoords: [number, number] | null;
   onNetworkSelect: (net: WiFiNetwork) => void;
@@ -92,7 +200,13 @@ const getNetworkColor = (encryption?: string) => {
   return "#00ffff";
 };
 
-export function WigleMap({ networks, onBoundsChange, targetCoords, onNetworkSelect }: WigleMapProps) {
+export function WigleMap({
+  networks,
+  triangulationNetworks = [],
+  onBoundsChange,
+  targetCoords,
+  onNetworkSelect,
+}: WigleMapProps) {
   const [viewport, setViewport] = useState<MapViewport | null>(null);
 
   const signalIcon = useMemo(
@@ -208,6 +322,7 @@ export function WigleMap({ networks, onBoundsChange, targetCoords, onNetworkSele
         />
         <MapEvents onBoundsChange={onBoundsChange} onViewportChange={setViewport} />
         <MapFlyTo target={targetCoords} />
+        <TriangulationOverlay networks={triangulationNetworks} />
         
         {groupedData.clusters.map((cluster, index) => (
           <Marker

@@ -28,6 +28,13 @@ interface SidebarProps {
   importedCount: number;
   isImportedMode: boolean;
   onApiSettingsChanged: () => void;
+  onSetTriangulationNetworks: (networks: WiFiNetwork[]) => void;
+}
+
+interface TriangulationInput {
+  id: number;
+  networkName: string;
+  signalStrength: string;
 }
 
 const CELL_TYPES = ["GSM", "UMTS", "LTE", "CDMA", "WCDMA", "NR"];
@@ -56,6 +63,7 @@ export function Sidebar({
   importedCount,
   isImportedMode,
   onApiSettingsChanged,
+  onSetTriangulationNetworks,
 }: SidebarProps) {
   const [ssid, setSsid] = useState("");
   const [netid, setNetid] = useState("");
@@ -72,6 +80,13 @@ export function Sidebar({
     loadUserApiSettings(),
   );
   const [apiSettingsNotice, setApiSettingsNotice] = useState<string | null>(null);
+  const [triangulationInputs, setTriangulationInputs] = useState<TriangulationInput[]>([
+    { id: 1, networkName: "", signalStrength: "" },
+    { id: 2, networkName: "", signalStrength: "" },
+    { id: 3, networkName: "", signalStrength: "" },
+  ]);
+  const [triangulationNotice, setTriangulationNotice] = useState<string | null>(null);
+  const [triangulationError, setTriangulationError] = useState<string | null>(null);
 
   const isWifi = netType === "any" || netType === "WiFi";
   const isBluetooth = netType === "BT" || netType === "BLE";
@@ -110,7 +125,122 @@ export function Sidebar({
     setCenterLat("");
     setCenterLng("");
     setVariance("");
+    setTriangulationNotice(null);
+    setTriangulationError(null);
+    onSetTriangulationNetworks([]);
     onSearch({});
+  };
+
+  const updateTriangulationInput = (
+    id: number,
+    field: "networkName" | "signalStrength",
+    value: string,
+  ) => {
+    setTriangulationNotice(null);
+    setTriangulationError(null);
+    setTriangulationInputs((prev) =>
+      prev.map((row) => (row.id === id ? { ...row, [field]: value } : row)),
+    );
+  };
+
+  const addTriangulationInput = () => {
+    setTriangulationNotice(null);
+    setTriangulationError(null);
+    setTriangulationInputs((prev) => {
+      const nextId = prev.length ? Math.max(...prev.map((row) => row.id)) + 1 : 1;
+      return [...prev, { id: nextId, networkName: "", signalStrength: "" }];
+    });
+  };
+
+  const removeTriangulationInput = (id: number) => {
+    setTriangulationNotice(null);
+    setTriangulationError(null);
+    setTriangulationInputs((prev) => {
+      if (prev.length <= 3) return prev;
+      return prev.filter((row) => row.id !== id);
+    });
+  };
+
+  const clearTriangulation = () => {
+    setTriangulationNotice(null);
+    setTriangulationError(null);
+    setTriangulationInputs((prev) =>
+      prev.map((row) => ({ ...row, networkName: "", signalStrength: "" })),
+    );
+    onSetTriangulationNetworks([]);
+  };
+
+  const handleTriangulate = () => {
+    setTriangulationNotice(null);
+    setTriangulationError(null);
+
+    const requested = triangulationInputs.filter((row) => row.networkName.trim().length > 0);
+    if (requested.length < 3) {
+      setTriangulationError("Add at least 3 network names for triangulation.");
+      onSetTriangulationNetworks([]);
+      return;
+    }
+
+    if (results.length === 0) {
+      setTriangulationError("No AP results available in current view.");
+      onSetTriangulationNetworks([]);
+      return;
+    }
+
+    const selected: WiFiNetwork[] = [];
+    const usedResultIndexes = new Set<number>();
+
+    for (const row of requested) {
+      const query = row.networkName.trim().toLowerCase();
+      const targetSignal = row.signalStrength.trim() === ""
+        ? null
+        : Number.parseInt(row.signalStrength.trim(), 10);
+
+      const candidates = results
+        .map((net, index) => ({ net, index }))
+        .filter(({ net }) => {
+          const ssid = (net.ssid || "").toLowerCase();
+          const netid = net.netid.toLowerCase();
+          return ssid.includes(query) || netid.includes(query);
+        })
+        .sort((a, b) => {
+          if (targetSignal !== null && Number.isFinite(targetSignal)) {
+            const aSignal = a.net.signal ?? Number.NEGATIVE_INFINITY;
+            const bSignal = b.net.signal ?? Number.NEGATIVE_INFINITY;
+            const aDiff = Number.isFinite(aSignal)
+              ? Math.abs(aSignal - targetSignal)
+              : Number.POSITIVE_INFINITY;
+            const bDiff = Number.isFinite(bSignal)
+              ? Math.abs(bSignal - targetSignal)
+              : Number.POSITIVE_INFINITY;
+            if (aDiff !== bDiff) return aDiff - bDiff;
+          }
+
+          const aSignal = a.net.signal ?? Number.NEGATIVE_INFINITY;
+          const bSignal = b.net.signal ?? Number.NEGATIVE_INFINITY;
+          return bSignal - aSignal;
+        });
+
+      if (candidates.length === 0) {
+        setTriangulationError(`No AP matched \"${row.networkName}\".`);
+        onSetTriangulationNetworks([]);
+        return;
+      }
+
+      const uniqueMatch = candidates.find((candidate) => !usedResultIndexes.has(candidate.index));
+      const chosen = uniqueMatch ?? candidates[0];
+      usedResultIndexes.add(chosen.index);
+      selected.push(chosen.net);
+    }
+
+    if (selected.length < 3) {
+      setTriangulationError("Triangulation requires at least 3 matched APs.");
+      onSetTriangulationNetworks([]);
+      return;
+    }
+
+    onSetTriangulationNetworks(selected);
+    setTriangulationNotice(`Triangulation linked ${selected.length} APs.`);
   };
 
   const handleCsvImport = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -347,6 +477,79 @@ export function Sidebar({
           >
             Reset Filters
           </Button>
+
+          <div className="pt-2 mt-2 border-t border-primary/30 space-y-2">
+            <label className="text-xs uppercase text-primary/70">Triangulation</label>
+            {triangulationInputs.map((row) => (
+              <div key={row.id} className="flex gap-2 items-center">
+                <Input
+                  value={row.networkName}
+                  onChange={(event) =>
+                    updateTriangulationInput(row.id, "networkName", event.target.value)
+                  }
+                  placeholder="Network name / BSSID"
+                  className="bg-black border-primary rounded-none focus-visible:ring-0 focus-visible:border-accent font-mono text-xs flex-1 min-w-0"
+                />
+                <Input
+                  value={row.signalStrength}
+                  onChange={(event) =>
+                    updateTriangulationInput(row.id, "signalStrength", event.target.value)
+                  }
+                  placeholder="-65 dBm"
+                  className="w-24 bg-black border-primary rounded-none focus-visible:ring-0 focus-visible:border-accent font-mono text-xs"
+                />
+                {triangulationInputs.length > 3 && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    onClick={() => removeTriangulationInput(row.id)}
+                    className="h-8 px-2 rounded-none text-primary/70 hover:text-red-400 hover:bg-black text-xs"
+                  >
+                    X
+                  </Button>
+                )}
+              </div>
+            ))}
+
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={handleTriangulate}
+                className="flex-1 rounded-none border-[#ff5a1f] text-[#ff5a1f] hover:bg-[#ff5a1f] hover:text-black font-bold uppercase transition-colors text-xs"
+              >
+                Triangulate
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={addTriangulationInput}
+                className="rounded-none text-primary/70 hover:text-primary hover:bg-black text-xs uppercase"
+              >
+                Add
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={clearTriangulation}
+                className="rounded-none text-primary/70 hover:text-primary hover:bg-black text-xs uppercase"
+              >
+                Clear
+              </Button>
+            </div>
+
+            {triangulationError && (
+              <div className="text-xs text-red-400 border border-red-500/40 bg-red-900/10 px-2 py-1">
+                {triangulationError}
+              </div>
+            )}
+
+            {triangulationNotice && (
+              <div className="text-xs text-[#ff5a1f] border border-[#ff5a1f]/40 bg-[#ff5a1f]/10 px-2 py-1">
+                {triangulationNotice}
+              </div>
+            )}
+          </div>
 
           <div className="pt-2 mt-2 border-t border-primary/30 space-y-2">
             <label className="text-xs uppercase text-primary/70">Import CSV</label>
