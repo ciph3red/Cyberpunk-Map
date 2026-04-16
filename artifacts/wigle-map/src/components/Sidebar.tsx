@@ -5,7 +5,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { WiFiNetwork } from "@workspace/api-client-react";
 import { Badge } from "@/components/ui/badge";
-import { parseWigleCsvToNetworks } from "@/lib/parse-wigle-csv";
+import { parseWigleCsvFileToNetworks } from "@/lib/parse-wigle-csv";
 import {
   applyUserApiSettings,
   loadUserApiSettings,
@@ -121,8 +121,7 @@ export function Sidebar({
     setImportNotice(null);
 
     try {
-      const text = await file.text();
-      const networks = parseWigleCsvToNetworks(text);
+      const networks = await parseWigleCsvFileToNetworks(file);
 
       if (networks.length === 0) {
         setImportError("CSV parsed but no valid coordinates were found.");

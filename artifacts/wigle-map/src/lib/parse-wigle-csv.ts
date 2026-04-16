@@ -26,6 +26,21 @@ export interface BssidGroup {
   bestRssi: number | null;
 }
 
+export interface ParseWigleCsvFileOptions {
+  chunkSizeBytes?: number;
+  onProgress?: (bytesRead: number, totalBytes: number) => void;
+}
+
+interface BssidAggregate {
+  bssid: string;
+  ssid: string;
+  capabilities: string;
+  type: string;
+  strongest: WigleCsvRow;
+}
+
+const DEFAULT_CHUNK_SIZE_BYTES = 1024 * 1024;
+
 const HEADER_ALIASES = {
   bssid: ["bssid", "mac", "netid"],
   ssid: ["ssid"],
@@ -135,6 +150,105 @@ function findHeader(lines: string[]): { headerIdx: number; indexByHeader: Map<st
   return null;
 }
 
+function parseDataRow(
+  line: string,
+  indexByHeader: Map<string, number>,
+): WigleCsvRow | null {
+  const columns = parseCsvLine(line);
+  if (columns.length === 0) return null;
+
+  const latitude = parseNumber(
+    getByAliases(columns, indexByHeader, HEADER_ALIASES.latitude),
+  );
+  const longitude = parseNumber(
+    getByAliases(columns, indexByHeader, HEADER_ALIASES.longitude),
+  );
+
+  if (latitude === null || longitude === null) return null;
+  if (latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) return null;
+
+  const bssid = getByAliases(columns, indexByHeader, HEADER_ALIASES.bssid).toUpperCase();
+  if (!bssid) return null;
+
+  return {
+    bssid,
+    ssid: getByAliases(columns, indexByHeader, HEADER_ALIASES.ssid),
+    capabilities: getByAliases(columns, indexByHeader, HEADER_ALIASES.capabilities),
+    firstTimestampSeen: getByAliases(
+      columns,
+      indexByHeader,
+      HEADER_ALIASES.firstTimestampSeen,
+    ),
+    channel: parseInteger(getByAliases(columns, indexByHeader, HEADER_ALIASES.channel)),
+    frequency: parseInteger(getByAliases(columns, indexByHeader, HEADER_ALIASES.frequency)),
+    rssi: parseInteger(getByAliases(columns, indexByHeader, HEADER_ALIASES.rssi)),
+    latitude,
+    longitude,
+    altitude: parseNumber(getByAliases(columns, indexByHeader, HEADER_ALIASES.altitude)),
+    accuracy: parseNumber(getByAliases(columns, indexByHeader, HEADER_ALIASES.accuracy)),
+    rcois: getByAliases(columns, indexByHeader, HEADER_ALIASES.rcois),
+    mfgrId: getByAliases(columns, indexByHeader, HEADER_ALIASES.mfgrId),
+    type: getByAliases(columns, indexByHeader, HEADER_ALIASES.type) || "WiFi",
+  };
+}
+
+function shouldReplaceStrongest(current: WigleCsvRow, candidate: WigleCsvRow): boolean {
+  const currentRssi = current.rssi;
+  const candidateRssi = candidate.rssi;
+
+  if (candidateRssi === null) return false;
+  if (currentRssi === null) return true;
+
+  return candidateRssi > currentRssi;
+}
+
+function updateAggregate(aggregates: Map<string, BssidAggregate>, row: WigleCsvRow): void {
+  const existing = aggregates.get(row.bssid);
+
+  if (!existing) {
+    aggregates.set(row.bssid, {
+      bssid: row.bssid,
+      ssid: row.ssid,
+      capabilities: row.capabilities,
+      type: row.type,
+      strongest: row,
+    });
+    return;
+  }
+
+  if (!existing.ssid && row.ssid) existing.ssid = row.ssid;
+  if (!existing.capabilities && row.capabilities) existing.capabilities = row.capabilities;
+  if (!existing.type && row.type) existing.type = row.type;
+
+  if (shouldReplaceStrongest(existing.strongest, row)) {
+    existing.strongest = row;
+  }
+}
+
+function aggregatesToNetworks(aggregates: Map<string, BssidAggregate>): WiFiNetwork[] {
+  return Array.from(aggregates.values())
+    .map((aggregate): WiFiNetwork => {
+      const strongest = aggregate.strongest;
+
+      return {
+        netid: aggregate.bssid,
+        ssid: aggregate.ssid || "",
+        trilat: strongest.latitude,
+        trilong: strongest.longitude,
+        signal: strongest.rssi ?? undefined,
+        channel: strongest.channel ?? undefined,
+        encryption: aggregate.capabilities || "Unknown",
+        firsttime: strongest.firstTimestampSeen || undefined,
+        type: aggregate.type || "WiFi",
+      };
+    })
+    .sort((a, b) => {
+      const aSignal = a.signal ?? Number.NEGATIVE_INFINITY;
+      const bSignal = b.signal ?? Number.NEGATIVE_INFINITY;
+      return bSignal - aSignal;
+    });
+}
+
 export function parseWigleCsv(text: string): WigleCsvRow[] {
   const lines = text
     .split(/\r?\n/)
@@ -147,42 +261,9 @@ export function parseWigleCsv(text: string): WigleCsvRow[] {
   const rows: WigleCsvRow[] = [];
 
   for (let i = header.headerIdx + 1; i < lines.length; i++) {
-    const columns = parseCsvLine(lines[i]);
-    if (columns.length === 0) continue;
-
-    const latitude = parseNumber(
-      getByAliases(columns, header.indexByHeader, HEADER_ALIASES.latitude),
-    );
-    const longitude = parseNumber(
-      getByAliases(columns, header.indexByHeader, HEADER_ALIASES.longitude),
-    );
-
-    if (latitude === null || longitude === null) continue;
-    if (latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) continue;
-
-    const bssid = getByAliases(columns, header.indexByHeader, HEADER_ALIASES.bssid).toUpperCase();
-    if (!bssid) continue;
-
-    rows.push({
-      bssid,
-      ssid: getByAliases(columns, header.indexByHeader, HEADER_ALIASES.ssid),
-      capabilities: getByAliases(columns, header.indexByHeader, HEADER_ALIASES.capabilities),
-      firstTimestampSeen: getByAliases(
-        columns,
-        header.indexByHeader,
-        HEADER_ALIASES.firstTimestampSeen,
-      ),
-      channel: parseInteger(getByAliases(columns, header.indexByHeader, HEADER_ALIASES.channel)),
-      frequency: parseInteger(getByAliases(columns, header.indexByHeader, HEADER_ALIASES.frequency)),
-      rssi: parseInteger(getByAliases(columns, header.indexByHeader, HEADER_ALIASES.rssi)),
-      latitude,
-      longitude,
-      altitude: parseNumber(getByAliases(columns, header.indexByHeader, HEADER_ALIASES.altitude)),
-      accuracy: parseNumber(getByAliases(columns, header.indexByHeader, HEADER_ALIASES.accuracy)),
-      rcois: getByAliases(columns, header.indexByHeader, HEADER_ALIASES.rcois),
-      mfgrId: getByAliases(columns, header.indexByHeader, HEADER_ALIASES.mfgrId),
-      type: getByAliases(columns, header.indexByHeader, HEADER_ALIASES.type) || "WiFi",
-    });
+    const row = parseDataRow(lines[i], header.indexByHeader);
+    if (!row) continue;
+    rows.push(row);
   }
 
   return rows;
@@ -256,4 +337,87 @@ export function csvRowsToNetworks(rows: WigleCsvRow[]): WiFiNetwork[] {
 
 export function parseWigleCsvToNetworks(text: string): WiFiNetwork[] {
   return csvRowsToNetworks(parseWigleCsv(text));
+}
+
+export async function parseWigleCsvFileToNetworks(
+  file: File,
+  options: ParseWigleCsvFileOptions = {},
+): Promise<WiFiNetwork[]> {
+  const chunkSizeBytes =
+    typeof options.chunkSizeBytes === "number" && options.chunkSizeBytes > 0
+      ? options.chunkSizeBytes
+      : DEFAULT_CHUNK_SIZE_BYTES;
+
+  const decoder = new TextDecoder();
+  const aggregates = new Map<string, BssidAggregate>();
+  const headerScanLines: string[] = [];
+  let headerIndexByName: Map<string, number> | null = null;
+
+  let offset = 0;
+  let carry = "";
+
+  const processLine = (rawLine: string) => {
+    const line = rawLine.trim();
+    if (!line) return;
+
+    if (!headerIndexByName) {
+      headerScanLines.push(line);
+      const header = findHeader(headerScanLines);
+
+      if (!header) {
+        return;
+      }
+
+      headerIndexByName = header.indexByHeader;
+
+      for (let i = header.headerIdx + 1; i < headerScanLines.length; i++) {
+        const row = parseDataRow(headerScanLines[i], headerIndexByName);
+        if (row) {
+          updateAggregate(aggregates, row);
+        }
+      }
+
+      headerScanLines.length = 0;
+      return;
+    }
+
+    const row = parseDataRow(line, headerIndexByName);
+    if (!row) return;
+
+    updateAggregate(aggregates, row);
+  };
+
+  while (offset < file.size) {
+    const end = Math.min(offset + chunkSizeBytes, file.size);
+    const chunk = await file.slice(offset, end).arrayBuffer();
+
+    carry += decoder.decode(chunk, { stream: end < file.size });
+
+    let newlineIndex = carry.indexOf("\n");
+    while (newlineIndex !== -1) {
+      const rawLine = carry.slice(0, newlineIndex).replace(/\r$/, "");
+      processLine(rawLine);
+
+      carry = carry.slice(newlineIndex + 1);
+      newlineIndex = carry.indexOf("\n");
+    }
+
+    offset = end;
+    options.onProgress?.(offset, file.size);
+
+    if (!headerIndexByName && headerScanLines.length >= 30) {
+      return [];
+    }
+  }
+
+  carry += decoder.decode();
+  if (carry) {
+    processLine(carry.replace(/\r$/, ""));
+  }
+
+  if (!headerIndexByName && headerScanLines.length >= 30) {
+    return [];
+  }
+
+  return aggregatesToNetworks(aggregates);
 }
