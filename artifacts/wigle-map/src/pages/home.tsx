@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useSearchNetworks, getSearchNetworksQueryKey, SearchNetworksParams, WiFiNetwork } from "@workspace/api-client-react";
 import { WigleMap } from "@/components/Map";
 import { Sidebar } from "@/components/Sidebar";
 import { StatsPanel } from "@/components/StatsPanel";
 import { useQueryClient } from "@tanstack/react-query";
+import { fetchLatestCsvImportFromServer } from "@/lib/csv-imports-api";
 
 function getErrorMessage(error: unknown): string {
   const status = (error as any)?.status as number | undefined;
@@ -15,6 +16,11 @@ function getErrorMessage(error: unknown): string {
   if (status) return `[ERR ${status}] ${message ?? "Request failed."}`;
   if (error instanceof Error) return `[ERR] ${error.message}`;
   return "[ERR] UNKNOWN_FAILURE";
+}
+
+function isCredentialFailure(error: unknown): boolean {
+  const status = (error as any)?.status as number | undefined;
+  return status === 401 || status === 403;
 }
 
 export default function Home() {
@@ -35,6 +41,7 @@ export default function Home() {
   const [targetCoords, setTargetCoords] = useState<[number, number] | null>(null);
   const [importedNetworks, setImportedNetworks] = useState<WiFiNetwork[] | null>(null);
   const [importedFileName, setImportedFileName] = useState<string | null>(null);
+  const lastAuthFallbackKey = useRef<string | null>(null);
 
   const isImportedMode = importedNetworks !== null;
 
@@ -47,6 +54,41 @@ export default function Home() {
 
   const activeNetworks = importedNetworks ?? data?.results ?? [];
   const activeTotalResults = importedNetworks ? importedNetworks.length : (data?.totalResults || 0);
+
+  useEffect(() => {
+    if (isImportedMode) return;
+    if (!isError || !isCredentialFailure(error)) return;
+
+    const status = (error as any)?.status as number | undefined;
+    const message = (error as any)?.message as string | undefined;
+    const fallbackKey = `${status ?? "unknown"}:${message ?? ""}:${JSON.stringify(searchParams)}`;
+
+    if (lastAuthFallbackKey.current === fallbackKey) {
+      return;
+    }
+
+    lastAuthFallbackKey.current = fallbackKey;
+
+    let cancelled = false;
+    void (async () => {
+      try {
+        const latestImport = await fetchLatestCsvImportFromServer();
+        if (cancelled || !latestImport || latestImport.networks.length === 0) return;
+
+        setImportedNetworks(latestImport.networks);
+        setImportedFileName(latestImport.fileName || "import.csv");
+
+        const first = latestImport.networks[0];
+        setTargetCoords([first.trilat, first.trilong]);
+      } catch {
+        // Keep showing API auth error when no server-side CSV fallback is available.
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [error, isError, isImportedMode, searchParams]);
 
   const handleSearch = (params: Partial<SearchNetworksParams>) => {
     setImportedNetworks(null);

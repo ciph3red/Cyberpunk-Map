@@ -12,6 +12,35 @@ interface SaveCsvImportResponse {
   createdAt: string;
 }
 
+interface CsvImportSummary {
+  importId: string;
+  fileName: string;
+  networkCount: number;
+  createdAt: string;
+}
+
+interface ListCsvImportsResponse {
+  success: boolean;
+  imports: CsvImportSummary[];
+}
+
+interface CsvImportDetailResponse {
+  success: boolean;
+  importId: string;
+  fileName: string;
+  networkCount: number;
+  createdAt: string;
+  totalResults: number;
+  resultCount: number;
+  results: WiFiNetwork[];
+}
+
+export interface LatestCsvImport {
+  importId: string;
+  fileName: string;
+  networks: WiFiNetwork[];
+}
+
 function resolveCsvImportsUrl(): string {
   const settings = loadUserApiSettings();
   const fallback =
@@ -42,6 +71,18 @@ function getFallbackSaveError(status: number): string {
   return "Failed to persist CSV import";
 }
 
+function getFallbackLoadError(): string {
+  return "Failed to load saved CSV import";
+}
+
+async function parseJsonBody(response: Response): Promise<unknown> {
+  try {
+    return await response.json();
+  } catch {
+    return null;
+  }
+}
+
 export async function saveCsvImportToServer(
   fileName: string,
   networks: WiFiNetwork[],
@@ -66,4 +107,41 @@ export async function saveCsvImportToServer(
   }
 
   return body as SaveCsvImportResponse;
+}
+
+export async function fetchLatestCsvImportFromServer(): Promise<LatestCsvImport | null> {
+  const listResponse = await fetch(`${resolveCsvImportsUrl()}?limit=1`, {
+    method: "GET",
+  });
+
+  const listBody = await parseJsonBody(listResponse);
+
+  if (!listResponse.ok) {
+    throw new Error(buildErrorMessage(listResponse.status, getFallbackLoadError(), listBody));
+  }
+
+  const listData = listBody as ListCsvImportsResponse;
+  const latest = Array.isArray(listData.imports) ? listData.imports[0] : undefined;
+  if (!latest?.importId) {
+    return null;
+  }
+
+  const detailResponse = await fetch(`${resolveCsvImportsUrl()}/${encodeURIComponent(latest.importId)}`, {
+    method: "GET",
+  });
+
+  const detailBody = await parseJsonBody(detailResponse);
+
+  if (!detailResponse.ok) {
+    throw new Error(buildErrorMessage(detailResponse.status, getFallbackLoadError(), detailBody));
+  }
+
+  const detail = detailBody as CsvImportDetailResponse;
+  const networks = Array.isArray(detail.results) ? detail.results : [];
+
+  return {
+    importId: detail.importId,
+    fileName: detail.fileName,
+    networks,
+  };
 }
