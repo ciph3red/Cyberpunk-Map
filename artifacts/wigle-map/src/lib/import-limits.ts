@@ -1,1 +1,1 @@
-export const MAX_LOADED_NETWORKS = 500;
+export const MAX_LOADED_NETWORKS = 700;

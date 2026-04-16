@@ -70,7 +70,7 @@ function MapFlyTo({ target }: MapFlyToProps) {
   const map = useMap();
   useEffect(() => {
     if (target) {
-      map.flyTo(target, 18, { duration: 1.5 });
+      map.flyTo(target, 20, { duration: 1.5 });
     }
   }, [target, map]);
   return null;
@@ -174,9 +174,14 @@ export function WigleMap({ networks, onBoundsChange, targetCoords, onNetworkSele
       <MapContainer
         center={[37.7749, -122.4194]}
         zoom={13}
+        minZoom={2}
+        maxZoom={22}
+        zoomSnap={0.25}
+        zoomDelta={0.5}
+        wheelPxPerZoomLevel={40}
         style={{ width: "100%", height: "100%", background: "#050a0e" }}
         className="z-0"
-        zoomControl={false}
+        zoomControl
         updateWhenIdle
       >
         <TileLayer
