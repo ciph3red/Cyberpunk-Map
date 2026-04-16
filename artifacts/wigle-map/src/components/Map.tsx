@@ -5,6 +5,7 @@ import {
   Marker,
   Popup,
   Polygon,
+  CircleMarker,
   useMap,
   useMapEvents,
 } from "react-leaflet";
@@ -110,9 +111,10 @@ function ensureTriangulationPattern(svg: SVGSVGElement): void {
 
 interface TriangulationOverlayProps {
   networks: WiFiNetwork[];
+  estimatedPoint?: [number, number] | null;
 }
 
-function TriangulationOverlay({ networks }: TriangulationOverlayProps) {
+function TriangulationOverlay({ networks, estimatedPoint }: TriangulationOverlayProps) {
   const map = useMap();
   const polygonRef = useRef<L.Polygon | null>(null);
 
@@ -176,19 +178,41 @@ function TriangulationOverlay({ networks }: TriangulationOverlayProps) {
     };
   }, [map, points]);
 
-  if (points.length < 3) return null;
+  if (points.length < 3 && !estimatedPoint) return null;
 
   return (
-    <Polygon
-      ref={polygonRef}
-      positions={points}
-      pathOptions={{
-        color: TRIANGULATION_COLOR,
-        weight: 2,
-        opacity: 1,
-        fillOpacity: 0.3,
-      }}
-    />
+    <>
+      {points.length >= 3 && (
+        <Polygon
+          ref={polygonRef}
+          positions={points}
+          pathOptions={{
+            color: TRIANGULATION_COLOR,
+            weight: 2,
+            opacity: 1,
+            fillOpacity: 0.3,
+          }}
+        />
+      )}
+      {estimatedPoint && (
+        <CircleMarker
+          center={estimatedPoint}
+          radius={8}
+          pathOptions={{
+            color: TRIANGULATION_COLOR,
+            fillColor: TRIANGULATION_COLOR,
+            fillOpacity: 0.8,
+            weight: 2,
+          }}
+        >
+          <Popup>
+            <div className="bg-[#050a0e] text-[#ff5a1f] p-2 border border-[#ff5a1f] shadow-[0_0_10px_#ff5a1f] font-mono text-xs">
+              Estimated triangulation location
+            </div>
+          </Popup>
+        </CircleMarker>
+      )}
+    </>
   );
 }
 
@@ -205,6 +229,7 @@ function MapFlyTo({ target }: MapFlyToProps) {
 export interface WigleMapProps {
   networks: WiFiNetwork[];
   triangulationNetworks?: WiFiNetwork[];
+  triangulationEstimate?: [number, number] | null;
   onBoundsChange: (bounds: { latrange1: number; latrange2: number; longrange1: number; longrange2: number }) => void;
   targetCoords: [number, number] | null;
   onNetworkSelect: (net: WiFiNetwork) => void;
@@ -221,6 +246,7 @@ const getNetworkColor = (encryption?: string) => {
 export function WigleMap({
   networks,
   triangulationNetworks = [],
+  triangulationEstimate = null,
   onBoundsChange,
   targetCoords,
   onNetworkSelect,
@@ -340,7 +366,10 @@ export function WigleMap({
         />
         <MapEvents onBoundsChange={onBoundsChange} onViewportChange={setViewport} />
         <MapFlyTo target={targetCoords} />
-        <TriangulationOverlay networks={triangulationNetworks} />
+        <TriangulationOverlay
+          networks={triangulationNetworks}
+          estimatedPoint={triangulationEstimate}
+        />
         
         {groupedData.clusters.map((cluster, index) => (
           <Marker

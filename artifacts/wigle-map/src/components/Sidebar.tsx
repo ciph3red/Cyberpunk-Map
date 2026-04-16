@@ -29,12 +29,96 @@ interface SidebarProps {
   isImportedMode: boolean;
   onApiSettingsChanged: () => void;
   onSetTriangulationNetworks: (networks: WiFiNetwork[]) => void;
+  onSetTriangulationEstimate: (estimate: [number, number] | null) => void;
 }
 
 interface TriangulationInput {
   id: number;
   networkName: string;
   signalStrength: string;
+}
+
+interface TriangulationSample {
+  network: WiFiNetwork;
+  observedSignal: number;
+}
+
+const RSSI_AT_1_METER_DBM = -41;
+const PATH_LOSS_EXPONENT = 2.6;
+
+function estimateDistanceMetersFromSignal(signalDbm: number): number {
+  const distance = 10 ** ((RSSI_AT_1_METER_DBM - signalDbm) / (10 * PATH_LOSS_EXPONENT));
+  return Math.max(1, Math.min(5000, distance));
+}
+
+function estimateTriangulatedLocation(samples: TriangulationSample[]): [number, number] | null {
+  if (samples.length < 3) return null;
+
+  const lat0 = samples.reduce((sum, sample) => sum + sample.network.trilat, 0) / samples.length;
+  const lng0 = samples.reduce((sum, sample) => sum + sample.network.trilong, 0) / samples.length;
+
+  const metersPerDegLat = 111_132;
+  const metersPerDegLng = Math.max(1, Math.cos((lat0 * Math.PI) / 180) * 111_320);
+
+  const points = samples.map((sample) => {
+    const x = (sample.network.trilong - lng0) * metersPerDegLng;
+    const y = (sample.network.trilat - lat0) * metersPerDegLat;
+    const distance = estimateDistanceMetersFromSignal(sample.observedSignal);
+    const weight = Math.max(1, 120 + sample.observedSignal);
+
+    return { x, y, distance, weight };
+  });
+
+  const totalWeight = points.reduce((sum, point) => sum + point.weight, 0);
+  if (!Number.isFinite(totalWeight) || totalWeight <= 0) return null;
+
+  let x = points.reduce((sum, point) => sum + point.x * point.weight, 0) / totalWeight;
+  let y = points.reduce((sum, point) => sum + point.y * point.weight, 0) / totalWeight;
+
+  for (let i = 0; i < 30; i++) {
+    let jtj00 = 0;
+    let jtj01 = 0;
+    let jtj11 = 0;
+    let jtr0 = 0;
+    let jtr1 = 0;
+
+    for (const point of points) {
+      const dx = x - point.x;
+      const dy = y - point.y;
+      const range = Math.max(1e-3, Math.hypot(dx, dy));
+      const residual = range - point.distance;
+      const jx = dx / range;
+      const jy = dy / range;
+
+      jtj00 += point.weight * jx * jx;
+      jtj01 += point.weight * jx * jy;
+      jtj11 += point.weight * jy * jy;
+      jtr0 += point.weight * jx * residual;
+      jtr1 += point.weight * jy * residual;
+    }
+
+    const det = jtj00 * jtj11 - jtj01 * jtj01;
+    if (!Number.isFinite(det) || Math.abs(det) < 1e-9) break;
+
+    const stepX = (jtj11 * jtr0 - jtj01 * jtr1) / det;
+    const stepY = (-jtj01 * jtr0 + jtj00 * jtr1) / det;
+
+    x -= stepX;
+    y -= stepY;
+
+    if (Math.hypot(stepX, stepY) < 0.1) {
+      break;
+    }
+  }
+
+  const estimatedLat = lat0 + y / metersPerDegLat;
+  const estimatedLng = lng0 + x / metersPerDegLng;
+
+  if (!Number.isFinite(estimatedLat) || !Number.isFinite(estimatedLng)) {
+    return null;
+  }
+
+  return [estimatedLat, estimatedLng];
 }
 
 const CELL_TYPES = ["GSM", "UMTS", "LTE", "CDMA", "WCDMA", "NR"];
@@ -64,6 +148,7 @@ export function Sidebar({
   isImportedMode,
   onApiSettingsChanged,
   onSetTriangulationNetworks,
+  onSetTriangulationEstimate,
 }: SidebarProps) {
   const [ssid, setSsid] = useState("");
   const [netid, setNetid] = useState("");
@@ -128,6 +213,7 @@ export function Sidebar({
     setTriangulationNotice(null);
     setTriangulationError(null);
     onSetTriangulationNetworks([]);
+    onSetTriangulationEstimate(null);
     onSearch({});
   };
 
@@ -168,6 +254,7 @@ export function Sidebar({
       prev.map((row) => ({ ...row, networkName: "", signalStrength: "" })),
     );
     onSetTriangulationNetworks([]);
+    onSetTriangulationEstimate(null);
   };
 
   const handleTriangulate = () => {
@@ -178,23 +265,38 @@ export function Sidebar({
     if (requested.length < 3) {
       setTriangulationError("Add at least 3 network names for triangulation.");
       onSetTriangulationNetworks([]);
+      onSetTriangulationEstimate(null);
       return;
     }
 
     if (results.length === 0) {
       setTriangulationError("No AP results available in current view.");
       onSetTriangulationNetworks([]);
+      onSetTriangulationEstimate(null);
       return;
     }
 
     const selected: WiFiNetwork[] = [];
+    const samples: TriangulationSample[] = [];
     const usedResultIndexes = new Set<number>();
 
     for (const row of requested) {
       const query = row.networkName.trim().toLowerCase();
-      const targetSignal = row.signalStrength.trim() === ""
-        ? null
-        : Number.parseInt(row.signalStrength.trim(), 10);
+      const targetSignalRaw = row.signalStrength.trim();
+      if (targetSignalRaw === "") {
+        setTriangulationError(`Signal strength is required for \"${row.networkName}\".`);
+        onSetTriangulationNetworks([]);
+        onSetTriangulationEstimate(null);
+        return;
+      }
+
+      const targetSignal = Number.parseInt(targetSignalRaw, 10);
+      if (!Number.isFinite(targetSignal) || targetSignal > -20 || targetSignal < -120) {
+        setTriangulationError(`Signal strength for \"${row.networkName}\" must be between -120 and -20 dBm.`);
+        onSetTriangulationNetworks([]);
+        onSetTriangulationEstimate(null);
+        return;
+      }
 
       const candidates = results
         .map((net, index) => ({ net, index }))
@@ -204,26 +306,23 @@ export function Sidebar({
           return ssid.includes(query) || netid.includes(query);
         })
         .sort((a, b) => {
-          if (targetSignal !== null && Number.isFinite(targetSignal)) {
-            const aSignal = a.net.signal ?? Number.NEGATIVE_INFINITY;
-            const bSignal = b.net.signal ?? Number.NEGATIVE_INFINITY;
-            const aDiff = Number.isFinite(aSignal)
-              ? Math.abs(aSignal - targetSignal)
-              : Number.POSITIVE_INFINITY;
-            const bDiff = Number.isFinite(bSignal)
-              ? Math.abs(bSignal - targetSignal)
-              : Number.POSITIVE_INFINITY;
-            if (aDiff !== bDiff) return aDiff - bDiff;
-          }
-
           const aSignal = a.net.signal ?? Number.NEGATIVE_INFINITY;
           const bSignal = b.net.signal ?? Number.NEGATIVE_INFINITY;
+          const aDiff = Number.isFinite(aSignal)
+            ? Math.abs(aSignal - targetSignal)
+            : Number.POSITIVE_INFINITY;
+          const bDiff = Number.isFinite(bSignal)
+            ? Math.abs(bSignal - targetSignal)
+            : Number.POSITIVE_INFINITY;
+          if (aDiff !== bDiff) return aDiff - bDiff;
+
           return bSignal - aSignal;
         });
 
       if (candidates.length === 0) {
         setTriangulationError(`No AP matched \"${row.networkName}\".`);
         onSetTriangulationNetworks([]);
+        onSetTriangulationEstimate(null);
         return;
       }
 
@@ -231,16 +330,27 @@ export function Sidebar({
       const chosen = uniqueMatch ?? candidates[0];
       usedResultIndexes.add(chosen.index);
       selected.push(chosen.net);
+      samples.push({ network: chosen.net, observedSignal: targetSignal });
     }
 
     if (selected.length < 3) {
       setTriangulationError("Triangulation requires at least 3 matched APs.");
       onSetTriangulationNetworks([]);
+      onSetTriangulationEstimate(null);
+      return;
+    }
+
+    const estimate = estimateTriangulatedLocation(samples);
+    if (!estimate) {
+      setTriangulationError("Unable to compute triangulation estimate from provided signals.");
+      onSetTriangulationNetworks([]);
+      onSetTriangulationEstimate(null);
       return;
     }
 
     onSetTriangulationNetworks(selected);
-    setTriangulationNotice(`Triangulation linked ${selected.length} APs.`);
+    onSetTriangulationEstimate(estimate);
+    setTriangulationNotice(`Triangulation estimated location from ${selected.length} APs.`);
   };
 
   const handleCsvImport = async (event: React.ChangeEvent<HTMLInputElement>) => {

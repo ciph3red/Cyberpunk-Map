@@ -42,6 +42,7 @@ export default function Home() {
   const [importedNetworks, setImportedNetworks] = useState<WiFiNetwork[] | null>(null);
   const [importedFileName, setImportedFileName] = useState<string | null>(null);
   const [triangulationNetworks, setTriangulationNetworks] = useState<WiFiNetwork[]>([]);
+  const [triangulationEstimate, setTriangulationEstimate] = useState<[number, number] | null>(null);
   const lastAuthFallbackKey = useRef<string | null>(null);
 
   const isImportedMode = importedNetworks !== null;
@@ -95,6 +96,7 @@ export default function Home() {
     setImportedNetworks(null);
     setImportedFileName(null);
     setTriangulationNetworks([]);
+    setTriangulationEstimate(null);
     setSearchParams(prev => ({ ...prev, ...params }));
   };
 
@@ -106,6 +108,7 @@ export default function Home() {
     setImportedNetworks(null);
     setImportedFileName(null);
     setTriangulationNetworks([]);
+    setTriangulationEstimate(null);
     setSearchParams(prev => ({ ...prev, ...bounds }));
   };
 
@@ -113,6 +116,7 @@ export default function Home() {
     setImportedNetworks(networks);
     setImportedFileName(fileName);
     setTriangulationNetworks([]);
+    setTriangulationEstimate(null);
     if (networks.length > 0) {
       setTargetCoords([networks[0].trilat, networks[0].trilong]);
     }
@@ -122,12 +126,14 @@ export default function Home() {
     setImportedNetworks(null);
     setImportedFileName(null);
     setTriangulationNetworks([]);
+    setTriangulationEstimate(null);
   };
 
   const handleApiSettingsChanged = () => {
     setImportedNetworks(null);
     setImportedFileName(null);
     setTriangulationNetworks([]);
+    setTriangulationEstimate(null);
     void queryClient.invalidateQueries();
   };
 
@@ -138,6 +144,7 @@ export default function Home() {
         <WigleMap 
           networks={activeNetworks}
           triangulationNetworks={triangulationNetworks}
+          triangulationEstimate={triangulationEstimate}
           onBoundsChange={handleBoundsChange}
           targetCoords={targetCoords}
           onNetworkSelect={(net) => setTargetCoords([net.trilat, net.trilong])}
@@ -183,6 +190,7 @@ export default function Home() {
           isImportedMode={isImportedMode}
           onApiSettingsChanged={handleApiSettingsChanged}
           onSetTriangulationNetworks={setTriangulationNetworks}
+          onSetTriangulationEstimate={setTriangulationEstimate}
         />
       </div>
 
