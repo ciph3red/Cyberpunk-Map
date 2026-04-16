@@ -31,7 +31,29 @@ interface PgPoolLike {
   query: (text: string, params?: unknown[]) => Promise<QueryResult>;
 }
 
+interface LatestImportSnapshot {
+  importId: string;
+  networks: PersistedNetwork[];
+}
+
+interface NetworkAccumulator {
+  netid: string;
+  ssid: string;
+  encryption: string | undefined;
+  type: string | undefined;
+  country: string | undefined;
+  city: string | undefined;
+  firsttime: string | undefined;
+  weightedLatSum: number;
+  weightedLngSum: number;
+  weightSum: number;
+  strongest: PersistedNetwork;
+}
+
 let csvTableReady: Promise<void> | null = null;
+
+const HISTORICAL_SOURCE_BOOST = 1;
+const INCOMING_SOURCE_BOOST = 1.35;
 
 function isFiniteNumber(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value);
@@ -93,6 +115,156 @@ function parseLimit(value: unknown): number {
   const parsed = Number.parseInt(value, 10);
   if (!Number.isFinite(parsed) || parsed <= 0) return 20;
   return Math.min(parsed, 100);
+}
+
+function clampLat(value: number): number {
+  return Math.max(-90, Math.min(90, value));
+}
+
+function clampLng(value: number): number {
+  return Math.max(-180, Math.min(180, value));
+}
+
+function getSignalWeight(signal: number | undefined): number {
+  if (!isFiniteNumber(signal)) {
+    return 20;
+  }
+
+  return Math.max(5, Math.min(120, signal + 130));
+}
+
+function pickString(
+  current: string | undefined,
+  candidate: string | undefined,
+  preferCandidate: boolean,
+): string | undefined {
+  if (!candidate) return current;
+  if (!current) return candidate;
+  return preferCandidate ? candidate : current;
+}
+
+function parsePersistedNetworks(value: unknown): PersistedNetwork[] {
+  if (!Array.isArray(value)) return [];
+
+  return value
+    .map(normalizeNetwork)
+    .filter((row): row is PersistedNetwork => row !== null);
+}
+
+function upsertAccumulator(
+  accumulators: Map<string, NetworkAccumulator>,
+  row: PersistedNetwork,
+  sourceBoost: number,
+  preferCandidateText: boolean,
+): void {
+  const existing = accumulators.get(row.netid);
+  const rowWeight = getSignalWeight(row.signal) * sourceBoost;
+
+  if (!existing) {
+    accumulators.set(row.netid, {
+      netid: row.netid,
+      ssid: row.ssid,
+      encryption: row.encryption,
+      type: row.type,
+      country: row.country,
+      city: row.city,
+      firsttime: row.firsttime,
+      weightedLatSum: row.trilat * rowWeight,
+      weightedLngSum: row.trilong * rowWeight,
+      weightSum: rowWeight,
+      strongest: row,
+    });
+    return;
+  }
+
+  existing.weightedLatSum += row.trilat * rowWeight;
+  existing.weightedLngSum += row.trilong * rowWeight;
+  existing.weightSum += rowWeight;
+
+  existing.ssid = pickString(existing.ssid, row.ssid, preferCandidateText) ?? "";
+  existing.encryption = pickString(existing.encryption, row.encryption, preferCandidateText);
+  existing.type = pickString(existing.type, row.type, preferCandidateText);
+  existing.country = pickString(existing.country, row.country, preferCandidateText);
+  existing.city = pickString(existing.city, row.city, preferCandidateText);
+  existing.firsttime = pickString(existing.firsttime, row.firsttime, preferCandidateText);
+
+  const existingSignal = existing.strongest.signal;
+  const candidateSignal = row.signal;
+  const shouldReplaceStrongest =
+    isFiniteNumber(candidateSignal) &&
+    (!isFiniteNumber(existingSignal) || candidateSignal > existingSignal);
+
+  if (shouldReplaceStrongest) {
+    existing.strongest = row;
+  }
+}
+
+function mergeNetworkSnapshots(
+  historical: PersistedNetwork[],
+  incoming: PersistedNetwork[],
+): PersistedNetwork[] {
+  const accumulators = new Map<string, NetworkAccumulator>();
+
+  for (const row of historical) {
+    upsertAccumulator(accumulators, row, HISTORICAL_SOURCE_BOOST, false);
+  }
+
+  for (const row of incoming) {
+    upsertAccumulator(accumulators, row, INCOMING_SOURCE_BOOST, true);
+  }
+
+  const merged = Array.from(accumulators.values()).map((acc) => {
+    const weight = acc.weightSum > 0 ? acc.weightSum : 1;
+    const strongest = acc.strongest;
+
+    return {
+      netid: acc.netid,
+      ssid: acc.ssid ?? "",
+      trilat: clampLat(acc.weightedLatSum / weight),
+      trilong: clampLng(acc.weightedLngSum / weight),
+      signal: strongest.signal,
+      channel: strongest.channel,
+      encryption: acc.encryption,
+      firsttime: acc.firsttime,
+      type: acc.type,
+      country: acc.country,
+      city: acc.city,
+    } as PersistedNetwork;
+  });
+
+  merged.sort((a, b) => {
+    const signalA = isFiniteNumber(a.signal) ? a.signal : Number.NEGATIVE_INFINITY;
+    const signalB = isFiniteNumber(b.signal) ? b.signal : Number.NEGATIVE_INFINITY;
+    return signalB - signalA;
+  });
+
+  return merged;
+}
+
+async function fetchLatestImportSnapshot(pool: PgPoolLike): Promise<LatestImportSnapshot | null> {
+  const latestResult = await pool.query(
+    `
+      SELECT id, networks
+      FROM csv_imports
+      ORDER BY created_at DESC
+      LIMIT 1
+    `,
+  );
+
+  const row = latestResult.rows[0];
+  if (!row || typeof row.id !== "string") {
+    return null;
+  }
+
+  const networks = parsePersistedNetworks((row as JsonRecord).networks);
+  if (networks.length === 0) {
+    return null;
+  }
+
+  return {
+    importId: row.id,
+    networks,
+  };
 }
 
 function resolveErrorMessage(err: unknown): string {
@@ -162,8 +334,8 @@ router.post("/csv/imports", async (req, res) => {
       return;
     }
 
-    if (inputNetworks.length > 50000) {
-      res.status(413).json({ success: false, error: "Too many networks in a single import (max 50000)" });
+    if (inputNetworks.length > 250000) {
+      res.status(413).json({ success: false, error: "Too many networks in a single import (max 250000)" });
       return;
     }
 
@@ -179,6 +351,11 @@ router.post("/csv/imports", async (req, res) => {
     const pool = await getPool();
     await ensureCsvTable(pool);
 
+    const previousSnapshot = await fetchLatestImportSnapshot(pool);
+    const refinedNetworks = previousSnapshot
+      ? mergeNetworkSnapshots(previousSnapshot.networks, networks)
+      : networks;
+
     const importId = crypto.randomUUID();
     const fileName = sanitizeFileName(body.fileName);
     const createdAt = new Date().toISOString();
@@ -188,15 +365,16 @@ router.post("/csv/imports", async (req, res) => {
         INSERT INTO csv_imports (id, file_name, networks, network_count, created_at)
         VALUES ($1, $2, $3::jsonb, $4, $5::timestamptz)
       `,
-      [importId, fileName, JSON.stringify(networks), networks.length, createdAt],
+      [importId, fileName, JSON.stringify(refinedNetworks), refinedNetworks.length, createdAt],
     );
 
     res.status(201).json({
       success: true,
       importId,
       fileName,
-      networkCount: networks.length,
+      networkCount: refinedNetworks.length,
       createdAt,
+      mergedWithImportId: previousSnapshot?.importId,
     });
   } catch (err) {
     req.log.error({ err }, "CSV import persistence failed");

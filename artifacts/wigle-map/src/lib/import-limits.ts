@@ -1,1 +1,1 @@
-export const MAX_LOADED_NETWORKS = 700;
+export const MAX_MARKERS_PER_CLUSTER = 700;

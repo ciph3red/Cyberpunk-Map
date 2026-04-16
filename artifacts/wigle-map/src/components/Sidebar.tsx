@@ -12,8 +12,8 @@ import {
   saveUserApiSettings,
   UserApiSettings,
 } from "@/lib/user-api-settings";
-import { saveCsvImportToServer } from "@/lib/csv-imports-api";
-import { MAX_LOADED_NETWORKS } from "@/lib/import-limits";
+import { fetchCsvImportById, saveCsvImportToServer } from "@/lib/csv-imports-api";
+import { MAX_MARKERS_PER_CLUSTER } from "@/lib/import-limits";
 
 interface SidebarProps {
   onSearch: (params: any) => void;
@@ -122,9 +122,7 @@ export function Sidebar({
     setImportNotice(null);
 
     try {
-      const networks = await parseWigleCsvFileToNetworks(file, {
-        maxNetworks: MAX_LOADED_NETWORKS,
-      });
+      const networks = await parseWigleCsvFileToNetworks(file);
 
       if (networks.length === 0) {
         setImportError("CSV parsed but no valid coordinates were found.");
@@ -135,6 +133,15 @@ export function Sidebar({
 
       try {
         const persisted = await saveCsvImportToServer(file.name, networks);
+        try {
+          const refinedImport = await fetchCsvImportById(persisted.importId);
+          if (refinedImport.networks.length > 0) {
+            onImportNetworks(refinedImport.networks, refinedImport.fileName || file.name);
+          }
+        } catch {
+          // Keep local parsed data active if refined import fetch fails.
+        }
+
         setImportNotice(
           `Saved to server database (${persisted.networkCount} signals, ID: ${persisted.importId.slice(0, 8)}).`,
         );
@@ -356,7 +363,7 @@ export function Sidebar({
             </div>
 
             <div className="text-[11px] text-primary/60 uppercase leading-relaxed">
-              MAX LOADED NETWORKS: {MAX_LOADED_NETWORKS}
+              MAX DISPLAYED PER CLUSTER: {MAX_MARKERS_PER_CLUSTER}
             </div>
 
             {isImportedMode && (

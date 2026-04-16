@@ -1,5 +1,4 @@
 import type { WiFiNetwork } from "@workspace/api-client-react";
-import { MAX_LOADED_NETWORKS } from "@/lib/import-limits";
 
 export interface WigleCsvRow {
   bssid: string;
@@ -30,7 +29,6 @@ export interface BssidGroup {
 export interface ParseWigleCsvFileOptions {
   chunkSizeBytes?: number;
   onProgress?: (bytesRead: number, totalBytes: number) => void;
-  maxNetworks?: number;
 }
 
 interface BssidAggregate {
@@ -351,10 +349,6 @@ export async function parseWigleCsvFileToNetworks(
       : DEFAULT_CHUNK_SIZE_BYTES;
 
   const decoder = new TextDecoder();
-  const maxNetworks =
-    typeof options.maxNetworks === "number" && options.maxNetworks > 0
-      ? Math.trunc(options.maxNetworks)
-      : MAX_LOADED_NETWORKS;
   const aggregates = new Map<string, BssidAggregate>();
   const headerScanLines: string[] = [];
   let headerIndexByName: Map<string, number> | null = null;
@@ -389,10 +383,6 @@ export async function parseWigleCsvFileToNetworks(
 
     const row = parseDataRow(line, headerIndexByName);
     if (!row) return;
-
-    if (!aggregates.has(row.bssid) && aggregates.size >= maxNetworks) {
-      return;
-    }
 
     updateAggregate(aggregates, row);
   };
@@ -429,5 +419,5 @@ export async function parseWigleCsvFileToNetworks(
     return [];
   }
 
-  return aggregatesToNetworks(aggregates).slice(0, maxNetworks);
+  return aggregatesToNetworks(aggregates);
 }

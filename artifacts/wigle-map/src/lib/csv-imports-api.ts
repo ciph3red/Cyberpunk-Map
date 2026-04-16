@@ -3,7 +3,6 @@ import {
   loadUserApiSettings,
   resolveDatabaseApiBaseUrl,
 } from "@/lib/user-api-settings";
-import { MAX_LOADED_NETWORKS } from "@/lib/import-limits";
 
 interface SaveCsvImportResponse {
   success: boolean;
@@ -11,6 +10,7 @@ interface SaveCsvImportResponse {
   fileName: string;
   networkCount: number;
   createdAt: string;
+  mergedWithImportId?: string;
 }
 
 interface CsvImportSummary {
@@ -110,6 +110,27 @@ export async function saveCsvImportToServer(
   return body as SaveCsvImportResponse;
 }
 
+export async function fetchCsvImportById(importId: string): Promise<LatestCsvImport> {
+  const detailResponse = await fetch(`${resolveCsvImportsUrl()}/${encodeURIComponent(importId)}`, {
+    method: "GET",
+  });
+
+  const detailBody = await parseJsonBody(detailResponse);
+
+  if (!detailResponse.ok) {
+    throw new Error(buildErrorMessage(detailResponse.status, getFallbackLoadError(), detailBody));
+  }
+
+  const detail = detailBody as CsvImportDetailResponse;
+  const networks = Array.isArray(detail.results) ? detail.results : [];
+
+  return {
+    importId: detail.importId,
+    fileName: detail.fileName,
+    networks,
+  };
+}
+
 export async function fetchLatestCsvImportFromServer(): Promise<LatestCsvImport | null> {
   const listResponse = await fetch(`${resolveCsvImportsUrl()}?limit=1`, {
     method: "GET",
@@ -127,24 +148,5 @@ export async function fetchLatestCsvImportFromServer(): Promise<LatestCsvImport 
     return null;
   }
 
-  const detailResponse = await fetch(`${resolveCsvImportsUrl()}/${encodeURIComponent(latest.importId)}`, {
-    method: "GET",
-  });
-
-  const detailBody = await parseJsonBody(detailResponse);
-
-  if (!detailResponse.ok) {
-    throw new Error(buildErrorMessage(detailResponse.status, getFallbackLoadError(), detailBody));
-  }
-
-  const detail = detailBody as CsvImportDetailResponse;
-  const networks = Array.isArray(detail.results)
-    ? detail.results.slice(0, MAX_LOADED_NETWORKS)
-    : [];
-
-  return {
-    importId: detail.importId,
-    fileName: detail.fileName,
-    networks,
-  };
+  return fetchCsvImportById(latest.importId);
 }

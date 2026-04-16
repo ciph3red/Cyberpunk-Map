@@ -10,8 +10,9 @@ import {
 import "leaflet/dist/leaflet.css";
 import L from "leaflet";
 import { WiFiNetwork } from "@workspace/api-client-react";
+import { MAX_MARKERS_PER_CLUSTER } from "@/lib/import-limits";
 
-const MAX_RENDERED_MARKERS = 1500;
+const CLUSTER_ZOOM_THRESHOLD = 16;
 
 interface MapViewport {
   south: number;
@@ -108,8 +109,9 @@ export function WigleMap({ networks, onBoundsChange, targetCoords, onNetworkSele
   const groupedData = useMemo(() => {
     if (!viewport) {
       return { 
-        markers: networks.slice(0, MAX_RENDERED_MARKERS), 
-        clusters: [] as { lat: number; lng: number; count: number }[] 
+        markers: [] as WiFiNetwork[],
+        clusters: [] as { lat: number; lng: number; count: number }[],
+        inViewCount: 0,
       };
     }
 
@@ -122,38 +124,49 @@ export function WigleMap({ networks, onBoundsChange, targetCoords, onNetworkSele
       );
     });
 
-    // If zoomed in close enough, render individual markers directly
-    if (viewport.zoom >= 16) {
-      if (inView.length <= MAX_RENDERED_MARKERS) {
-        return { markers: inView, clusters: [] };
-      }
-      const step = Math.ceil(inView.length / MAX_RENDERED_MARKERS);
-      return { markers: inView.filter((_, index) => index % step === 0), clusters: [] };
+    if (viewport.zoom < CLUSTER_ZOOM_THRESHOLD) {
+      // Grid-based clustering for zoomed out views to avoid lag.
+      const radius = viewport.zoom <= 12 ? 0.05 : viewport.zoom <= 14 ? 0.01 : 0.005;
+      const grid = new Map<string, { lat: number; lng: number; count: number }>();
+
+      inView.forEach((net) => {
+        const gridLat = Math.round(net.trilat / radius) * radius;
+        const gridLng = Math.round(net.trilong / radius) * radius;
+        const key = `${gridLat.toFixed(4)},${gridLng.toFixed(4)}`;
+        const existing = grid.get(key);
+        if (!existing) {
+          grid.set(key, { lat: gridLat, lng: gridLng, count: 1 });
+        } else {
+          existing.count++;
+        }
+      });
+
+      return { markers: [], clusters: Array.from(grid.values()), inViewCount: inView.length };
     }
 
-    // Grid-based clustering for zoomed out views to avoid lag
-    // Grid size scales with zoom level. Lower zoom level = larger grid radius
-    const R = viewport.zoom <= 12 ? 0.05 : viewport.zoom <= 14 ? 0.01 : 0.005;
-    
-    const grid = new Map<string, { lat: number; lng: number; count: number }>();
-    let totalCount = 0;
-    
-    inView.forEach(net => {
-      const gridLat = Math.round(net.trilat / R) * R;
-      const gridLng = Math.round(net.trilong / R) * R;
-      const key = `${gridLat.toFixed(4)},${gridLng.toFixed(4)}`;
-      const existing = grid.get(key);
-      if (!existing) {
-        grid.set(key, { lat: gridLat, lng: gridLng, count: 1 });
-      } else {
-        existing.count++;
+    // Zoomed-in mode renders AP markers directly, capped per dense cell.
+    const cellRadius = viewport.zoom >= 19 ? 0.0005 : viewport.zoom >= 18 ? 0.001 : 0.002;
+    const denseCells = new Map<string, WiFiNetwork[]>();
+
+    inView.forEach((net) => {
+      const cellLat = Math.round(net.trilat / cellRadius) * cellRadius;
+      const cellLng = Math.round(net.trilong / cellRadius) * cellRadius;
+      const key = `${cellLat.toFixed(6)},${cellLng.toFixed(6)}`;
+      const bucket = denseCells.get(key);
+      if (!bucket) {
+        denseCells.set(key, [net]);
+        return;
       }
-      totalCount++;
+      bucket.push(net);
     });
 
-    const clusters = Array.from(grid.values());
+    const markers: WiFiNetwork[] = [];
+    denseCells.forEach((bucket) => {
+      bucket.sort((a, b) => (b.signal ?? Number.NEGATIVE_INFINITY) - (a.signal ?? Number.NEGATIVE_INFINITY));
+      markers.push(...bucket.slice(0, MAX_MARKERS_PER_CLUSTER));
+    });
 
-    return { markers: [], clusters };
+    return { markers, clusters: [], inViewCount: inView.length };
   }, [networks, viewport]);
 
   const createClusterIcon = (count: number) => {
@@ -167,7 +180,7 @@ export function WigleMap({ networks, onBoundsChange, targetCoords, onNetworkSele
     });
   };
 
-  const droppedCount = Math.max(0, networks.length - groupedData.markers.length - groupedData.clusters.reduce((acc, c) => acc + c.count, 0));
+  const isZoomedOutClusterMode = Boolean(viewport && viewport.zoom < CLUSTER_ZOOM_THRESHOLD);
 
   return (
     <div className="w-full h-full relative z-0">
@@ -226,9 +239,9 @@ export function WigleMap({ networks, onBoundsChange, targetCoords, onNetworkSele
         ))}
       </MapContainer>
 
-      {droppedCount > 0 && (
+      {isZoomedOutClusterMode && (
         <div className="absolute top-4 right-4 z-[1000] bg-black/80 border border-red-500 text-red-400 px-3 py-1 text-xs font-mono uppercase">
-          {viewport && viewport.zoom < 16 ? `Clustering ${networks.length.toLocaleString()} signals` : `Rendering ${groupedData.markers.length.toLocaleString()} of ${networks.length.toLocaleString()} signals`}
+          {`Clustered ${groupedData.inViewCount.toLocaleString()} APs in view`}
         </div>
       )}
     </div>
