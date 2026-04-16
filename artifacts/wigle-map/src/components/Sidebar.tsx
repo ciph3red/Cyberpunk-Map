@@ -47,6 +47,8 @@ interface TriangulationSample {
 
 const RSSI_AT_1_METER_DBM = -41;
 const PATH_LOSS_EXPONENT = 2.6;
+const TARGET_RSSI_PRIORITY = 0.9;
+const AP_RSSI_CORRECTION_WEIGHT = 0.1;
 
 function clampNumber(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
@@ -65,21 +67,25 @@ function estimateDistanceMetersFromTargetAndApSignal(
   const baseDistance = estimateDistanceMetersFromSignal(targetSignal);
   if (apSignal === null) return baseDistance;
 
-  // If AP-listed signal is stronger than target-detected signal, target is likely farther.
-  const delta = apSignal - targetSignal;
-  const calibrationFactor = clampNumber(1 + delta * 0.015, 0.6, 1.8);
+  // Target RSSI is primary; AP RSSI only nudges the distance estimate.
+  const apDistance = estimateDistanceMetersFromSignal(apSignal);
+  const blended =
+    baseDistance * TARGET_RSSI_PRIORITY +
+    apDistance * AP_RSSI_CORRECTION_WEIGHT;
 
-  return clampNumber(baseDistance * calibrationFactor, 1, 5000);
+  return clampNumber(blended, 1, 5000);
 }
 
 function estimateSampleWeight(targetSignal: number, apSignal: number | null): number {
-  const targetWeight = Math.max(1, 120 + targetSignal);
-  if (apSignal === null) return targetWeight * 0.75;
+  const normalizedTarget = clampNumber(targetSignal, -120, -20);
+  const targetWeight = Math.max(1, 120 + normalizedTarget);
+  if (apSignal === null) return targetWeight;
 
-  const apStrengthFactor = clampNumber((120 + apSignal) / 100, 0.35, 1.25);
-  const consistencyFactor = clampNumber(1 - Math.abs(targetSignal - apSignal) / 90, 0.35, 1);
+  // AP signal influences confidence lightly compared with target RSSI.
+  const consistencyFactor = clampNumber(1 - Math.abs(targetSignal - apSignal) / 100, 0.5, 1);
+  const mildCorrection = 0.85 + 0.15 * consistencyFactor;
 
-  return targetWeight * apStrengthFactor * consistencyFactor;
+  return targetWeight * mildCorrection;
 }
 
 function estimateTriangulatedLocation(samples: TriangulationSample[]): [number, number] | null {
