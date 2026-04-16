@@ -3,6 +3,7 @@ import {
   loadUserApiSettings,
   resolveDatabaseApiBaseUrl,
 } from "@/lib/user-api-settings";
+import { MAX_LOADED_NETWORKS } from "@/lib/import-limits";
 
 interface SaveCsvImportResponse {
   success: boolean;
@@ -137,7 +138,9 @@ export async function fetchLatestCsvImportFromServer(): Promise<LatestCsvImport 
   }
 
   const detail = detailBody as CsvImportDetailResponse;
-  const networks = Array.isArray(detail.results) ? detail.results : [];
+  const networks = Array.isArray(detail.results)
+    ? detail.results.slice(0, MAX_LOADED_NETWORKS)
+    : [];
 
   return {
     importId: detail.importId,

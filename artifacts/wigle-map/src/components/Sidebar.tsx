@@ -13,6 +13,7 @@ import {
   UserApiSettings,
 } from "@/lib/user-api-settings";
 import { saveCsvImportToServer } from "@/lib/csv-imports-api";
+import { MAX_LOADED_NETWORKS } from "@/lib/import-limits";
 
 interface SidebarProps {
   onSearch: (params: any) => void;
@@ -121,7 +122,9 @@ export function Sidebar({
     setImportNotice(null);
 
     try {
-      const networks = await parseWigleCsvFileToNetworks(file);
+      const networks = await parseWigleCsvFileToNetworks(file, {
+        maxNetworks: MAX_LOADED_NETWORKS,
+      });
 
       if (networks.length === 0) {
         setImportError("CSV parsed but no valid coordinates were found.");
@@ -350,6 +353,10 @@ export function Sidebar({
 
             <div className="text-[11px] text-primary/60 uppercase leading-relaxed">
               TEMPLATE: [BSSID],[SSID],[Capabilities],[First timestamp seen],[Channel],[Frequency],[RSSI],[Latitude],[Longitude],[Altitude],[Accuracy],[RCOIs],[MfgrId],[Type]
+            </div>
+
+            <div className="text-[11px] text-primary/60 uppercase leading-relaxed">
+              MAX LOADED NETWORKS: {MAX_LOADED_NETWORKS}
             </div>
 
             {isImportedMode && (
