@@ -30,6 +30,7 @@ interface SidebarProps {
   onApiSettingsChanged: () => void;
   onSetTriangulationNetworks: (networks: WiFiNetwork[]) => void;
   onSetTriangulationEstimate: (estimate: [number, number] | null) => void;
+  selectedNetwork: WiFiNetwork | null;
 }
 
 interface TriangulationInput {
@@ -40,15 +41,45 @@ interface TriangulationInput {
 
 interface TriangulationSample {
   network: WiFiNetwork;
-  observedSignal: number;
+  targetSignal: number;
+  apSignal: number | null;
 }
 
 const RSSI_AT_1_METER_DBM = -41;
 const PATH_LOSS_EXPONENT = 2.6;
 
+function clampNumber(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
+}
+
 function estimateDistanceMetersFromSignal(signalDbm: number): number {
-  const distance = 10 ** ((RSSI_AT_1_METER_DBM - signalDbm) / (10 * PATH_LOSS_EXPONENT));
+  const normalizedSignal = clampNumber(signalDbm, -120, -20);
+  const distance = 10 ** ((RSSI_AT_1_METER_DBM - normalizedSignal) / (10 * PATH_LOSS_EXPONENT));
   return Math.max(1, Math.min(5000, distance));
+}
+
+function estimateDistanceMetersFromTargetAndApSignal(
+  targetSignal: number,
+  apSignal: number | null,
+): number {
+  const baseDistance = estimateDistanceMetersFromSignal(targetSignal);
+  if (apSignal === null) return baseDistance;
+
+  // If AP-listed signal is stronger than target-detected signal, target is likely farther.
+  const delta = apSignal - targetSignal;
+  const calibrationFactor = clampNumber(1 + delta * 0.015, 0.6, 1.8);
+
+  return clampNumber(baseDistance * calibrationFactor, 1, 5000);
+}
+
+function estimateSampleWeight(targetSignal: number, apSignal: number | null): number {
+  const targetWeight = Math.max(1, 120 + targetSignal);
+  if (apSignal === null) return targetWeight * 0.75;
+
+  const apStrengthFactor = clampNumber((120 + apSignal) / 100, 0.35, 1.25);
+  const consistencyFactor = clampNumber(1 - Math.abs(targetSignal - apSignal) / 90, 0.35, 1);
+
+  return targetWeight * apStrengthFactor * consistencyFactor;
 }
 
 function estimateTriangulatedLocation(samples: TriangulationSample[]): [number, number] | null {
@@ -63,8 +94,11 @@ function estimateTriangulatedLocation(samples: TriangulationSample[]): [number, 
   const points = samples.map((sample) => {
     const x = (sample.network.trilong - lng0) * metersPerDegLng;
     const y = (sample.network.trilat - lat0) * metersPerDegLat;
-    const distance = estimateDistanceMetersFromSignal(sample.observedSignal);
-    const weight = Math.max(1, 120 + sample.observedSignal);
+    const distance = estimateDistanceMetersFromTargetAndApSignal(
+      sample.targetSignal,
+      sample.apSignal,
+    );
+    const weight = estimateSampleWeight(sample.targetSignal, sample.apSignal);
 
     return { x, y, distance, weight };
   });
@@ -193,6 +227,7 @@ export function Sidebar({
   onApiSettingsChanged,
   onSetTriangulationNetworks,
   onSetTriangulationEstimate,
+  selectedNetwork,
 }: SidebarProps) {
   const [ssid, setSsid] = useState("");
   const [netid, setNetid] = useState("");
@@ -301,6 +336,36 @@ export function Sidebar({
     onSetTriangulationEstimate(null);
   };
 
+  const addSelectedNetworkToTriangulation = () => {
+    if (!selectedNetwork) return;
+
+    setTriangulationNotice(null);
+    setTriangulationError(null);
+
+    const networkLabel = (selectedNetwork.ssid || "").trim() || selectedNetwork.netid;
+    const signalValue =
+      selectedNetwork.signal !== undefined && Number.isFinite(selectedNetwork.signal)
+        ? String(Math.round(selectedNetwork.signal))
+        : "";
+
+    setTriangulationInputs((prev) => {
+      const emptyIndex = prev.findIndex((row) => row.networkName.trim() === "");
+
+      if (emptyIndex !== -1) {
+        return prev.map((row, index) =>
+          index === emptyIndex
+            ? { ...row, networkName: networkLabel, signalStrength: signalValue }
+            : row,
+        );
+      }
+
+      const nextId = prev.length ? Math.max(...prev.map((row) => row.id)) + 1 : 1;
+      return [...prev, { id: nextId, networkName: networkLabel, signalStrength: signalValue }];
+    });
+
+    setTriangulationNotice(`Added ${networkLabel} to triangulation list.`);
+  };
+
   const handleTriangulate = () => {
     setTriangulationNotice(null);
     setTriangulationError(null);
@@ -374,7 +439,14 @@ export function Sidebar({
       const chosen = uniqueMatch ?? candidates[0];
       usedResultIndexes.add(chosen.index);
       selected.push(chosen.net);
-      samples.push({ network: chosen.net, observedSignal: targetSignal });
+      samples.push({
+        network: chosen.net,
+        targetSignal,
+        apSignal:
+          chosen.net.signal !== undefined && Number.isFinite(chosen.net.signal)
+            ? chosen.net.signal
+            : null,
+      });
     }
 
     if (selected.length < 3) {
@@ -634,6 +706,24 @@ export function Sidebar({
 
           <div className="pt-2 mt-2 border-t border-primary/30 space-y-2">
             <label className="text-xs uppercase text-primary/70">Triangulation</label>
+
+            <div className="flex items-center justify-between gap-2 border border-[#ff5a1f]/40 bg-[#ff5a1f]/10 px-2 py-1 text-xs">
+              <span className="text-[#ff5a1f] truncate">
+                {selectedNetwork
+                  ? `Selected: ${selectedNetwork.ssid || selectedNetwork.netid}`
+                  : "Select an AP from map/results"}
+              </span>
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={addSelectedNetworkToTriangulation}
+                disabled={!selectedNetwork}
+                className="h-7 px-2 rounded-none text-[#ff5a1f] hover:text-black hover:bg-[#ff5a1f] disabled:text-primary/40 disabled:hover:bg-transparent"
+              >
+                Add Selected
+              </Button>
+            </div>
+
             {triangulationInputs.map((row) => (
               <div key={row.id} className="flex gap-2 items-center">
                 <Input
@@ -649,7 +739,7 @@ export function Sidebar({
                   onChange={(event) =>
                     updateTriangulationInput(row.id, "signalStrength", event.target.value)
                   }
-                  placeholder="-65 dBm"
+                  placeholder="Target -65"
                   className="w-24 bg-black border-primary rounded-none focus-visible:ring-0 focus-visible:border-accent font-mono text-xs"
                 />
                 {triangulationInputs.length > 3 && (

@@ -43,6 +43,7 @@ export default function Home() {
   const [importedFileName, setImportedFileName] = useState<string | null>(null);
   const [triangulationNetworks, setTriangulationNetworks] = useState<WiFiNetwork[]>([]);
   const [triangulationEstimate, setTriangulationEstimate] = useState<[number, number] | null>(null);
+  const [selectedNetwork, setSelectedNetwork] = useState<WiFiNetwork | null>(null);
   const lastAuthFallbackKey = useRef<string | null>(null);
 
   const isImportedMode = importedNetworks !== null;
@@ -97,6 +98,7 @@ export default function Home() {
     setImportedFileName(null);
     setTriangulationNetworks([]);
     setTriangulationEstimate(null);
+    setSelectedNetwork(null);
     setSearchParams(prev => ({ ...prev, ...params }));
   };
 
@@ -109,6 +111,7 @@ export default function Home() {
     setImportedFileName(null);
     setTriangulationNetworks([]);
     setTriangulationEstimate(null);
+    setSelectedNetwork(null);
     setSearchParams(prev => ({ ...prev, ...bounds }));
   };
 
@@ -117,6 +120,7 @@ export default function Home() {
     setImportedFileName(fileName);
     setTriangulationNetworks([]);
     setTriangulationEstimate(null);
+    setSelectedNetwork(null);
     if (networks.length > 0) {
       setTargetCoords([networks[0].trilat, networks[0].trilong]);
     }
@@ -127,6 +131,7 @@ export default function Home() {
     setImportedFileName(null);
     setTriangulationNetworks([]);
     setTriangulationEstimate(null);
+    setSelectedNetwork(null);
   };
 
   const handleApiSettingsChanged = () => {
@@ -134,6 +139,7 @@ export default function Home() {
     setImportedFileName(null);
     setTriangulationNetworks([]);
     setTriangulationEstimate(null);
+    setSelectedNetwork(null);
     void queryClient.invalidateQueries();
   };
 
@@ -147,7 +153,10 @@ export default function Home() {
           triangulationEstimate={triangulationEstimate}
           onBoundsChange={handleBoundsChange}
           targetCoords={targetCoords}
-          onNetworkSelect={(net) => setTargetCoords([net.trilat, net.trilong])}
+          onNetworkSelect={(net) => {
+            setTargetCoords([net.trilat, net.trilong]);
+            setSelectedNetwork(net);
+          }}
         />
         
         {/* Loading Overlay */}
@@ -181,7 +190,10 @@ export default function Home() {
           onScanArea={handleScanArea}
           results={activeNetworks}
           totalResults={activeTotalResults}
-          onSelectResult={(net) => setTargetCoords([net.trilat, net.trilong])}
+          onSelectResult={(net) => {
+            setTargetCoords([net.trilat, net.trilong]);
+            setSelectedNetwork(net);
+          }}
           isLoading={!isImportedMode && isLoading}
           onImportNetworks={handleImportNetworks}
           onClearImported={handleClearImported}
@@ -191,6 +203,7 @@ export default function Home() {
           onApiSettingsChanged={handleApiSettingsChanged}
           onSetTriangulationNetworks={setTriangulationNetworks}
           onSetTriangulationEstimate={setTriangulationEstimate}
+          selectedNetwork={selectedNetwork}
         />
       </div>
 
