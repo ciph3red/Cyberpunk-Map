@@ -148,14 +148,32 @@ function TriangulationOverlay({ networks }: TriangulationOverlayProps) {
   useEffect(() => {
     if (points.length < 3) return;
 
-    const svg = map.getPanes().overlayPane.querySelector("svg") as SVGSVGElement | null;
-    const element = polygonRef.current?.getElement() as SVGPathElement | null;
-    if (!svg || !element) return;
+    const applyPattern = () => {
+      const svg = map.getPanes().overlayPane.querySelector("svg") as SVGSVGElement | null;
+      const element = polygonRef.current?.getElement() as SVGPathElement | null;
+      if (!svg || !element) return;
 
-    ensureTriangulationPattern(svg);
-    element.setAttribute("fill", `url(#${TRIANGULATION_PATTERN_ID})`);
-    element.setAttribute("fill-opacity", "0.3");
-    element.setAttribute("stroke", TRIANGULATION_COLOR);
+      ensureTriangulationPattern(svg);
+      element.setAttribute("fill", `url(#${TRIANGULATION_PATTERN_ID})`);
+      element.setAttribute("fill-opacity", "0.3");
+      element.setAttribute("stroke", TRIANGULATION_COLOR);
+    };
+
+    const applyPatternNextFrame = () => {
+      window.requestAnimationFrame(applyPattern);
+    };
+
+    applyPatternNextFrame();
+
+    map.on("zoomend", applyPatternNextFrame);
+    map.on("moveend", applyPatternNextFrame);
+    map.on("viewreset", applyPatternNextFrame);
+
+    return () => {
+      map.off("zoomend", applyPatternNextFrame);
+      map.off("moveend", applyPatternNextFrame);
+      map.off("viewreset", applyPatternNextFrame);
+    };
   }, [map, points]);
 
   if (points.length < 3) return null;
